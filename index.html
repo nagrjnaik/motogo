@@ -1213,6 +1213,7 @@
             typeof data.accepted !== 'boolean') return;
         state.joinRequestPending = false;
         clearJoinRequestTimer();
+        state.joinRequestId = null;
         closeJoinWaitingModal();
         if (data.accepted) {
           if (!state.approvedRiderIds.includes(state.myId)) state.approvedRiderIds.push(state.myId);
@@ -1775,6 +1776,8 @@
     // 2. Exit Room Button
     document.getElementById('btnExitRideRoom').addEventListener('click', () => {
       publishRoomState({ type: 'RIDER_EXIT', riderId: state.myId });
+      clearJoinRequestTimer();
+      closeJoinWaitingModal();
       state.isBroadcasting = false;
       if (state.gpsWatchId !== null && 'geolocation' in navigator) {
         navigator.geolocation.clearWatch(state.gpsWatchId);
