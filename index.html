@@ -781,6 +781,7 @@
       approvedRiderIds: [],
       joinRequestId: null,
       joinRequestPending: false,
+      joinRequestTimer: null,
       pendingGpsHighAccuracy: true,
       isDemoMode: false,
       lastSeenByRider: {},
@@ -1181,7 +1182,12 @@
     function closeJoinWaitingModal() {
       const modal = document.getElementById('joinWaitingModal'); modal.classList.add('hidden'); modal.classList.remove('flex');
     }
+    function clearJoinRequestTimer() {
+      if (state.joinRequestTimer) clearTimeout(state.joinRequestTimer);
+      state.joinRequestTimer = null;
+    }
     function cancelJoinRequest() {
+      clearJoinRequestTimer();
       state.joinRequestPending = false; state.joinRequestId = null; closeJoinWaitingModal();
       if (state.mqttClient) { try { state.mqttClient.end(true); } catch (e) {} }
       state.mqttClient = null; state.mqttConnected = false; showToast('Join request cancelled');
@@ -1205,7 +1211,9 @@
       if (data.type === 'JOIN_DECISION') {
         if (!state.joinRequestPending || data.targetId !== state.myId || data.requestId !== state.joinRequestId ||
             typeof data.accepted !== 'boolean') return;
-        state.joinRequestPending = false; closeJoinWaitingModal();
+        state.joinRequestPending = false;
+        clearJoinRequestTimer();
+        closeJoinWaitingModal();
         if (data.accepted) {
           if (!state.approvedRiderIds.includes(state.myId)) state.approvedRiderIds.push(state.myId);
           enterLiveRideScreen(false); beginContinuousGpsWatch(state.pendingGpsHighAccuracy);
@@ -1638,6 +1646,14 @@
       state.joinRequestPending = true;
       document.getElementById('joinWaitingRoomCode').textContent = state.roomCode;
       const modal = document.getElementById('joinWaitingModal'); modal.classList.remove('hidden'); modal.classList.add('flex');
+      clearJoinRequestTimer();
+      state.joinRequestTimer = setTimeout(() => {
+        if (!state.joinRequestPending) return;
+        state.joinRequestPending = false; state.joinRequestId = null; closeJoinWaitingModal();
+        if (state.mqttClient) { try { state.mqttClient.end(true); } catch (e) {} }
+        state.mqttClient = null; state.mqttConnected = false;
+        showToast('No response from the owner. Check that they are online, then try again.');
+      }, 45000);
       connectCloudRoom(); showToast('Requesting approval from the ride owner');
     }
     function continueAfterGpsLock(highAccuracy) {
