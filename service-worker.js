@@ -1,5 +1,5 @@
 /* MotoGo static PWA service worker. No background GPS is performed here. */
-const CACHE_NAME = 'motogo-shell-v2';
+const CACHE_NAME = 'motogo-shell-v3';
 
 self.addEventListener('install', (event) => {
   const scope = self.registration.scope;
