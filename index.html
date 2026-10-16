@@ -209,8 +209,9 @@
     #hudOverlay { padding-left: max(0.75rem, env(safe-area-inset-left)); padding-right: max(0.75rem, env(safe-area-inset-right)); }
     #packModal { padding-bottom: max(0px, env(safe-area-inset-bottom)); }
     #packModal .pack-sheet { padding-bottom: max(1rem, env(safe-area-inset-bottom)); overscroll-behavior: contain; transition: max-height 180ms ease; }
-    #packModal.pack-collapsed .pack-sheet { max-height: 160px; }
-    #packModal.pack-collapsed .pack-sheet-content { display: none; }
+    #packModal.pack-collapsed .pack-sheet { max-height: 170px; }
+    #packModal.pack-collapsed .pack-sheet > :not(#btnTogglePackSheet):not(.pack-sheet-header) { display: none !important; }
+    #bottomRidersStrip { display: none !important; }
     #packModal .pack-sheet-handle { width: 38px; height: 4px; border-radius: 999px; background: var(--text-muted); opacity: 0.55; margin: 0 auto 0.25rem; }
     .rider-status-badge { font-size: 9px; line-height: 1.3; font-weight: 800; letter-spacing: 0.04em; border-radius: 999px; padding: 2px 6px; white-space: nowrap; }
     .rider-status-live { background: #dcfce7; color: #166534; }
@@ -698,10 +699,11 @@
   <!-- MODAL 2: WHATSAPP INVITE & PACK DISTANCES SHEET                       -->
   <!-- ===================================================================== -->
   <div id="packModal" class="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] flex flex-col p-5 space-y-4">
-      <div class="flex items-center justify-between shrink-0">
+    <div class="pack-sheet surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] flex flex-col p-4 sm:p-5 space-y-3">
+      <button id="btnTogglePackSheet" type="button" class="w-full py-1" aria-expanded="true" title="Collapse or expand pack sheet"><span class="pack-sheet-handle block"></span><span id="packSheetToggleLabel" class="text-[10px] font-semibold text-sec">Tap to collapse</span></button>
+      <div class="pack-sheet-header flex items-center justify-between shrink-0">
         <div>
-          <h3 class="font-display font-bold text-lg">Pack Radar & Invite Link</h3>
+          <h3 class="font-display font-bold text-lg">Your Pack</h3>
           <p class="text-xs font-mono-tech text-sec">ROOM ID: <strong id="modalRoomIdText" style="color: var(--accent);"></strong></p>
         </div>
         <button id="btnClosePackModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
@@ -1986,9 +1988,19 @@
       document.getElementById('btnWhatsAppForward').href = `https://wa.me/?text=${encodeURIComponent(waMsg)}`;
 
       const m = document.getElementById('packModal');
+      m.classList.remove('pack-collapsed');
+      document.getElementById('btnTogglePackSheet').setAttribute('aria-expanded', 'true');
+      document.getElementById('packSheetToggleLabel').textContent = 'Tap to collapse';
       m.classList.remove('hidden');
       m.classList.add('flex');
     }
+
+    document.getElementById('btnTogglePackSheet').addEventListener('click', () => {
+      const m = document.getElementById('packModal');
+      const collapsed = m.classList.toggle('pack-collapsed');
+      document.getElementById('btnTogglePackSheet').setAttribute('aria-expanded', String(!collapsed));
+      document.getElementById('packSheetToggleLabel').textContent = collapsed ? 'Tap to expand' : 'Tap to collapse';
+    });
 
     document.getElementById('btnOpenShareSheet').addEventListener('click', openPackDrawer);
     document.getElementById('btnOpenPackDrawer').addEventListener('click', openPackDrawer);
