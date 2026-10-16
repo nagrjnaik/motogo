@@ -211,7 +211,22 @@
     #packModal .pack-sheet { padding-bottom: max(1rem, env(safe-area-inset-bottom)); overscroll-behavior: contain; transition: max-height 180ms ease; }
     #packModal.pack-collapsed .pack-sheet { max-height: 170px; }
     #packModal.pack-collapsed .pack-sheet > :not(#btnTogglePackSheet):not(.pack-sheet-header) { display: none !important; }
-    #bottomRidersStrip { display: none !important; }
+    /* Connected-rider dock: visible on mobile and desktop. */
+    #bottomRidersStrip { display: flex; align-items: stretch; gap: 0.55rem; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; padding: 0.15rem 0.1rem 0.35rem; }
+    .dock-rider-chip { min-width: 156px; max-width: 210px; scroll-snap-align: start; border: 1px solid var(--border-strong); text-align: left; padding: 0.65rem 0.7rem; border-radius: 1rem; background: var(--surface-subtle); color: var(--text-primary); }
+    .dock-rider-top { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+    .dock-rider-dot { width: 0.55rem; height: 0.55rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.85); flex: 0 0 auto; }
+    .dock-rider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.75rem; font-weight: 800; }
+    .dock-rider-state { margin-left: auto; font-size: 0.58rem; line-height: 1.2; letter-spacing: .04em; font-weight: 900; border-radius: 999px; padding: 0.18rem 0.35rem; flex: 0 0 auto; }
+    .dock-rider-state-live { background: #dcfce7; color: #166534; }
+    .dock-rider-state-stale { background: #fef3c7; color: #92400e; }
+    .dock-rider-state-you { background: #dbeafe; color: #1d4ed8; }
+    .dock-rider-meta { display: block; margin-top: 0.35rem; font-size: 0.65rem; line-height: 1.35; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.dark-mode .dock-rider-chip { background: #171a21; border-color: #3f4652; color: #f4f4f5; }
+    body.dark-mode .dock-rider-state-live { background: #14532d; color: #bbf7d0; }
+    body.dark-mode .dock-rider-state-stale { background: #78350f; color: #fde68a; }
+    body.dark-mode .dock-rider-state-you { background: #1e3a8a; color: #dbeafe; }
+    @media (max-width: 420px) { .dock-rider-chip { min-width: 142px; max-width: 176px; } }
     #packModal .pack-sheet-handle { width: 38px; height: 4px; border-radius: 999px; background: var(--text-muted); opacity: 0.55; margin: 0 auto 0.25rem; }
     .rider-status-badge { font-size: 9px; line-height: 1.3; font-weight: 800; letter-spacing: 0.04em; border-radius: 999px; padding: 2px 6px; white-space: nowrap; }
     .rider-status-live { background: #dcfce7; color: #166534; }
@@ -482,8 +497,12 @@
     <!-- BOTTOM FLOATING DOCK: Connected Riders Strip + 2 Primary Action Buttons -->
     <div class="w-full max-w-lg mx-auto pointer-events-auto">
       <div class="surface-glass rounded-3xl p-2.5 space-y-2.5">
-        <!-- Horizontal Scrollable Rider Telemetry Pills -->
-        <div id="bottomRidersStrip" class="flex items-center gap-2 overflow-x-auto no-scrollbar px-0.5">
+        <!-- Connected riders panel: horizontally scrollable, with GPS freshness -->
+        <div class="flex items-center justify-between gap-2 px-1 pt-0.5">
+          <div class="text-[10px] font-extrabold tracking-[0.12em] text-sec uppercase">Connected riders</div>
+          <div id="bottomRidersCount" class="text-[10px] font-mono-tech font-bold text-sec" aria-live="polite">1 IN PACK</div>
+        </div>
+        <div id="bottomRidersStrip" class="no-scrollbar" role="group" aria-label="Connected riders">
           <!-- Populated dynamically by JS -->
         </div>
 
@@ -1528,17 +1547,25 @@
         sigBanner.classList.add('hidden');
       }
 
-      // Render Bottom Dock Rider Strip
+      // Render the connected-rider dock with GPS freshness and distance.
       const stripEl = document.getElementById('bottomRidersStrip');
-      stripEl.innerHTML = enriched.map(r => `
-        <button type="button" data-focus="${r.id}" class="dock-rider-chip shrink-0 px-3 py-1.5 rounded-2xl surface-subtle flex items-center gap-2 text-xs font-bold transition active:scale-95">
-          <span class="w-3 h-3 rounded-full border border-white shadow-sm shrink-0" style="background:${r.color};"></span>
-          <span>${r.name}</span>
-          <span class="font-mono-tech text-[11px] px-1.5 py-0.5 rounded-lg surface-card font-extrabold">
-            ${r.isMe ? 'YOU' : formatDistance(r.distKm)}
-          </span>
-        </button>
-      `).join('');
+      const countEl = document.getElementById('bottomRidersCount');
+      if (countEl) countEl.textContent = `${state.riders.length} ${state.riders.length === 1 ? 'RIDER' : 'RIDERS'} IN PACK`;
+      stripEl.innerHTML = enriched.map(r => {
+        const statusClass = r.isMe ? 'dock-rider-state-you' : (r.isStale ? 'dock-rider-state-stale' : 'dock-rider-state-live');
+        const statusText = r.isMe ? 'YOU' : (r.isStale ? 'STALE' : 'LIVE');
+        const metaText = r.isMe ? 'Your GPS location' : `${formatDistance(r.distKm)} away · ${r.lastUpdateLabel}`;
+        return `
+          <button type="button" data-focus="${escapeHtml(r.id)}" class="dock-rider-chip shrink-0 transition active:scale-[0.98]" aria-label="Focus on ${escapeHtml(r.name)}">
+            <span class="dock-rider-top">
+              <span class="dock-rider-dot" style="background:${r.color};"></span>
+              <span class="dock-rider-name">${escapeHtml(r.name)}${r.isMe ? ' (You)' : ''}</span>
+              <span class="dock-rider-state ${statusClass}">${statusText}</span>
+            </span>
+            <span class="dock-rider-meta">${escapeHtml(metaText)}</span>
+          </button>
+        `;
+      }).join('');
 
       stripEl.querySelectorAll('.dock-rider-chip').forEach(btn => {
         btn.addEventListener('click', () => {
