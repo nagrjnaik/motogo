@@ -316,7 +316,8 @@
           <div class="p-3.5 rounded-2xl surface-subtle flex items-center justify-between gap-2">
             <div class="min-w-0">
               <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-sec">Session ID</div>
-              <div id="landingRoomId" class="font-mono-tech font-extrabold text-sm tracking-tight truncate" style="color: var(--accent);">MG-49X2</div>
+              <input id="landingRoomId" type="text" value="MG-49X2" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" aria-label="Session ID (type a custom ID to join an existing room)" placeholder="e.g. MG-49X2" class="w-full bg-transparent border-0 border-b border-dashed focus:outline-none font-mono-tech font-extrabold text-sm tracking-tight uppercase" style="color: var(--accent); border-color: var(--border-strong);" />
+              <div class="text-[10px] text-mut mt-0.5">Tap to type an ID and join a friend's room</div>
             </div>
             <button id="btnNewRandomRoom" type="button" class="px-2.5 py-1.5 rounded-xl surface-card text-xs font-mono-tech font-bold hover:opacity-80 active:scale-95 transition shrink-0" title="Generate new random Room ID">
               New ID
@@ -744,12 +745,17 @@
       return code;
     }
 
+    // Room IDs become part of an MQTT topic, so keep them to A-Z, 0-9 and "-".
+    function sanitizeRoomCode(raw) {
+      return String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 12);
+    }
+
     const queryParams = new URLSearchParams(window.location.search || window.location.hash.replace(/^#/, '?'));
-    const roomFromLink = queryParams.get('room');
+    const roomFromLink = sanitizeRoomCode(queryParams.get('room'));
 
     const state = {
       theme: 'light',
-      roomCode: roomFromLink ? roomFromLink.toUpperCase() : generateRandomRoomCode(),
+      roomCode: roomFromLink || generateRandomRoomCode(),
       myId: 'rider-' + Math.random().toString(36).substring(2, 9),
       selectedColor: '#ff3b00',
       mqttClient: null,
@@ -810,7 +816,7 @@
       });
     }
 
-    document.getElementById('landingRoomId').textContent = state.roomCode;
+    document.getElementById('landingRoomId').value = state.roomCode;
     if (roomFromLink) {
       document.getElementById('inviteDetectedCard').classList.remove('hidden');
       document.getElementById('inviteRoomCodeText').textContent = state.roomCode;
@@ -857,9 +863,16 @@
 
     document.getElementById('btnNewRandomRoom').addEventListener('click', () => {
       state.roomCode = generateRandomRoomCode();
-      document.getElementById('landingRoomId').textContent = state.roomCode;
+      document.getElementById('landingRoomId').value = state.roomCode;
       document.getElementById('inviteDetectedCard').classList.add('hidden');
       showToast(`Generated secure ID: ${state.roomCode}`);
+    });
+
+    // Manual Room ID entry: type an ID to join an existing room
+    document.getElementById('landingRoomId').addEventListener('input', (e) => {
+      const clean = sanitizeRoomCode(e.target.value);
+      if (e.target.value !== clean) e.target.value = clean;
+      document.getElementById('inviteDetectedCard').classList.add('hidden');
     });
 
     // About Modal Listeners
@@ -1451,6 +1464,20 @@
     // CRITICAL FOR iOS SAFARI: `navigator.geolocation.getCurrentPosition` MUST be invoked
     // synchronously on the very first line of the click handler to preserve the iOS user-gesture token!
     function forceLocationPromptAndLaunch() {
+      const typedRoom = sanitizeRoomCode(document.getElementById('landingRoomId').value);
+      if (typedRoom.length < 3) {
+        showToast('Enter a Session ID of at least 3 characters');
+        document.getElementById('landingRoomId').focus();
+        return;
+      }
+      if (typedRoom !== state.roomCode) {
+        // Switching rooms: drop riders/signals from the previous room
+        state.riders = [getMe()];
+        state.activeSignal = null;
+      }
+      state.roomCode = typedRoom;
+      document.getElementById('landingRoomId').value = typedRoom;
+
       if (!('geolocation' in navigator)) {
         showGpsTroubleshooterModal('Geolocation API is not supported in this browser');
         return;
@@ -1564,7 +1591,7 @@
       state.riders = [getMe()];
       state.activeSignal = null;
       state.roomCode = generateRandomRoomCode();
-      document.getElementById('landingRoomId').textContent = state.roomCode;
+      document.getElementById('landingRoomId').value = state.roomCode;
       document.getElementById('inviteDetectedCard').classList.add('hidden');
       try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
 
