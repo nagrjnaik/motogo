@@ -33,11 +33,12 @@ Geolocation requires a **secure context** (HTTPS or `localhost`). It deploys as-
 
 ## Joining a ride
 
-1. **Start a ride:** enter your callsign, pick a colour, and tap **Start Broadcasting GPS**. A random Session ID is generated for you.
+1. **Start a ride:** enter your callsign, pick a colour, and tap **Start Broadcasting GPS**. A random Session ID is generated for you; you become the room owner on that device.
 2. **Invite friends:** tap **Share** in the ride screen to copy the link or send it via WhatsApp.
-3. **Join manually:** on the landing screen, tap the **Session ID** field, type the ID your friend gave you (letters, numbers, and `-`, up to 12 characters), then tap **Start Broadcasting GPS**. Tap **New ID** to go back to a random one.
+3. **Join:** open the invite link or enter the Session ID manually, then tap **Start Broadcasting GPS**. The guest sees a waiting screen while the owner receives an approval prompt. The guest's app does not start broadcasting its GPS until approval is received.
+4. **Approve or reject:** the owner can accept or reject each join request from the on-screen prompt.
 
-Riders in the same Session ID see each other. Anyone who knows an ID can join that room, so use a less guessable custom ID for private rides.
+**Important limitation:** this is an app-level admission workflow, not server-enforced access control. The app is static and uses a public MQTT broker; a technically capable person can bypass the UI or forge MQTT messages. Do not treat room approval or a random Session ID as a security boundary, and avoid sharing live location in sensitive situations.
 
 ## How it works
 
@@ -52,7 +53,7 @@ Vanilla JavaScript · Tailwind CSS (CDN) · Leaflet · MQTT.js
 
 ## Privacy notes
 
-Location is broadcast to everyone in the room through a **public** MQTT broker. Don't share your Session ID publicly, and exit the room (the red button) when the ride ends to stop broadcasting.
+Live coordinates, rider names, speeds, and stop signals are transmitted through a **public** MQTT broker. The join approval prompt reduces accidental entry by ordinary app users but cannot authenticate participants or prevent crafted MQTT clients from reading or publishing room messages. Exit the room (the red button) when the ride ends to stop this app from broadcasting.
 
 ## Project structure
 
