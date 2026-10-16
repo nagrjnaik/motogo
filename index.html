@@ -1912,7 +1912,7 @@
       const wasOwnerOfCurrentRoom = state.isRoomOwner && typedRoom === state.roomCode;
       state.isRoomOwner = wasOwnerOfCurrentRoom || typedRoom === readStoredOwnerRoomCode();
       state.roomCode = typedRoom;
-      state.roomAccessMode = queryParams.get('mode') === 'closed' ? 'closed' : 'open';
+      state.roomAccessMode = roomFromLink === typedRoom && queryParams.get('mode') === 'closed' ? 'closed' : 'open';
       if (state.isRoomOwner) {
         try {
           const savedAccess = localStorage.getItem('motogo_v5_room_access_' + state.roomCode);
@@ -2036,10 +2036,14 @@
       state.activeSignal = null;
       state.isDemoMode = false; state.joinRequestPending = false; state.joinRequestId = null;
       state.joinRequests = []; state.approvedRiderIds = [state.myId]; state.lastSeenByRider = {};
-      state.roomCode = generateRandomRoomCode(); state.isRoomOwner = true;
-      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
+      state.roomCode = generateRandomRoomCode(); state.isRoomOwner = true; state.roomAccessMode = 'open';
+      try {
+        localStorage.setItem('motogo_v5_owner_room', state.roomCode);
+        localStorage.setItem('motogo_v5_room_access_' + state.roomCode, 'open');
+      } catch (e) {}
       document.getElementById('demoModeBanner').classList.add('hidden');
       document.getElementById('landingRoomId').value = state.roomCode;
+      renderRoomAccessControls();
       document.getElementById('inviteDetectedCard').classList.add('hidden');
       try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
 
