@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>motoGo — Live Pack Telemetry</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #f4f4f0;
+      --bg-card: #ffffff;
+      --bg-subtle: #e8e8e3;
+      --bg-glass: rgba(255, 255, 255, 0.95);
+      --text-primary: #09090b;
+      --text-secondary: #3f3f46;
+      --text-muted: #71717a;
+      --border-strong: #d4d4d0;
+      --accent: #ff3b00;
+      --accent-fg: #ffffff;
+      --shadow-elevated: 0 16px 36px -6px rgba(9, 9, 11, 0.12), 0 4px 12px -2px rgba(9, 9, 11, 0.06);
+    }
+
+    body.dark-mode {
+      --bg-primary: #090a0d;
+      --bg-card: #12141a;
+      --bg-subtle: #1c1f28;
+      --bg-glass: rgba(18, 20, 26, 0.94);
+      --text-primary: #fafafa;
+      --text-secondary: #d4d4d8;
+      --text-muted: #a1a1aa;
+      --border-strong: #272b38;
+      --accent: #ff4d15;
+      --accent-fg: #ffffff;
+      --shadow-elevated: 0 20px 40px -8px rgba(0, 0, 0, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .font-display {
+      font-family: 'Space Grotesk', sans-serif;
+    }
+
+    .font-mono-tech {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+    }
+
+    .surface-card {
+      background-color: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-elevated);
+    }
+
+    .surface-glass {
+      background-color: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-elevated);
+    }
+
+    .surface-subtle {
+      background-color: var(--bg-subtle);
+      color: var(--text-primary);
+      border: 1px solid var(--border-strong);
+    }
+
+    .text-sec {
+      color: var(--text-secondary);
+    }
+
+    .text-mut {
+      color: var(--text-muted);
+    }
+
+    /* Full-bleed Map Layer */
+    #mapStage {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100dvh;
+      z-index: 1;
+      background: #e5e5e0;
+    }
+
+    #fallbackMapCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      background: transparent !important;
+    }
+
+    .leaflet-container {
+      font-family: 'Inter', sans-serif;
+      background: transparent !important;
+    }
+
+    /* Prevent Leaflet's default `a { color: #0078A8 }` from overriding button text colors */
+    .leaflet-container a.gmaps-popup-btn {
+      color: #ffffff !important;
+      background-color: #09090b !important;
+      text-decoration: none !important;
+    }
+    .leaflet-container a.gmaps-popup-btn:hover {
+      background-color: #27272a !important;
+      color: #ffffff !important;
+    }
+
+    .leaflet-popup-content-wrapper {
+      background: #ffffff !important;
+      color: #09090b !important;
+      border-radius: 16px;
+      border: 2px solid #09090b;
+      box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28);
+      padding: 2px;
+    }
+
+    .leaflet-popup-tip {
+      background: #ffffff !important;
+    }
+
+    .leaflet-popup-content {
+      margin: 10px 12px;
+      color: #09090b !important;
+    }
+
+    .rider-pin-node {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+    }
+
+    .rider-radar-pulse {
+      position: absolute;
+      width: 52px;
+      height: 52px;
+      border-radius: 9999px;
+      animation: radar-expand 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+      pointer-events: none;
+    }
+
+    @keyframes radar-expand {
+      0% { transform: scale(0.55); opacity: 0.85; }
+      100% { transform: scale(1.85); opacity: 0; }
+    }
+
+    .tether-distance-tag {
+      background: #09090b !important;
+      color: #ffffff !important;
+      border: 2px solid #ffffff !important;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      transform: translate(-50%, -50%);
+    }
+
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="w-full h-full overflow-hidden select-none">
+
+  <!-- ===================================================================== -->
+  <!-- 1. FULL-BLEED INTERACTIVE MAP STAGE (Always rendered underneath)       -->
+  <!-- ===================================================================== -->
+  <div id="mapStage">
+    <canvas id="fallbackMapCanvas"></canvas>
+    <div id="map"></div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 2. MODERN EDITORIAL LANDING SCREEN (motoGo)                           -->
+  <!-- ===================================================================== -->
+  <section id="landingOverlay" class="fixed inset-0 z-40 flex flex-col justify-between p-4 sm:p-6 overflow-y-auto transition-opacity duration-300" style="background: var(--bg-primary);">
+    <!-- Subtle Architectural Grid Background Pattern -->
+    <div class="pointer-events-none fixed inset-0 opacity-[0.04]" style="background-image: radial-gradient(var(--text-primary) 1px, transparent 1px); background-size: 20px 20px;"></div>
+
+    <!-- Top Navigation Bar: Brand + About + GitHub Cat + Daylight/Night Switch -->
+    <div class="relative z-10 w-full max-w-md mx-auto flex items-center justify-between pt-1 shrink-0">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white font-display font-bold text-lg shadow-sm" style="background: var(--accent);">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>
+            <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/>
+          </svg>
+        </div>
+        <span class="font-display font-bold text-xl tracking-tight">motoGo<span style="color: var(--accent);">.</span></span>
+      </div>
+
+      <!-- Right Header Actions: About Icon, GitHub Cat Icon, Theme Toggle -->
+      <div class="flex items-center gap-1.5">
+        <button id="btnOpenAboutModal" type="button" class="px-3 h-9 rounded-full surface-subtle text-xs font-bold flex items-center gap-1.5 transition active:scale-95" title="About motoGo & Features">
+          <svg class="w-3.5 h-3.5" style="color: var(--accent);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <span>About</span>
+        </button>
+
+        <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-full surface-subtle flex items-center justify-center transition hover:opacity-80 active:scale-95" title="GitHub: nagrjnaik/motogo">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+        </a>
+
+        <button id="btnLandingTheme" type="button" class="px-3 h-9 rounded-full surface-subtle text-xs font-bold flex items-center gap-1.5 transition active:scale-95">
+          <span id="landingThemeDot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span id="landingThemeText">Daylight</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Editorial Hero & Setup Card -->
+    <div class="relative z-10 w-full max-w-md mx-auto my-auto py-4 space-y-5">
+      <!-- Editorial Headline -->
+      <div class="space-y-1.5 px-1">
+        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full surface-subtle text-[11px] font-mono-tech font-bold uppercase tracking-wider">
+          <span id="landingGpsStatusDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="landingGpsStatusText">Live Pack Telemetry</span>
+        </div>
+        <h1 class="font-display text-3xl sm:text-4xl font-bold tracking-tight leading-[1.08]">
+          Never lose your pack on the road.
+        </h1>
+        <p id="landingSubheadline" class="text-xs sm:text-sm text-sec font-medium">
+          Real-time GPS radar, rider-to-rider distance tethers, and instant stop signals for Android & iOS.
+        </p>
+      </div>
+
+      <!-- Invite Detected Banner (Shown automatically when opened via WhatsApp link) -->
+      <div id="inviteDetectedCard" class="hidden p-3.5 rounded-2xl border-2 border-emerald-500 bg-emerald-500/10 flex items-center justify-between gap-3">
+        <div>
+          <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">WhatsApp Invite Link Active</div>
+          <div class="text-sm font-bold">Joining Room <span id="inviteRoomCodeText" class="font-mono-tech underline"></span></div>
+        </div>
+        <span class="px-2.5 py-1 rounded-lg bg-emerald-500 text-slate-950 font-mono-tech font-bold text-xs">Connected</span>
+      </div>
+
+      <!-- iOS In-App Browser Warning Banner (Auto-shown if opened inside WhatsApp In-App Browser on iPhone) -->
+      <div id="iosInAppWarning" class="hidden p-3.5 rounded-2xl border-2 border-amber-500 bg-amber-500/15 text-xs space-y-1">
+        <div class="font-bold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+          <span>📱 Opened inside WhatsApp on iPhone?</span>
+        </div>
+        <p class="text-[11px] text-sec leading-relaxed">
+          If iOS blocks the location prompt inside WhatsApp, tap the <strong>Safari compass icon (🧭)</strong> in the bottom-right corner to open in Safari, or enable Location for WhatsApp/Safari in <em>iPhone Settings → Privacy & Security → Location Services</em>.
+        </p>
+      </div>
+
+      <!-- Clean Tactile Setup Card -->
+      <div class="surface-card rounded-3xl p-5 space-y-5">
+        <!-- Rider Callsign Input -->
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label for="inputCallsign" class="text-[11px] font-mono-tech font-bold uppercase tracking-wider text-sec">Rider Name</label>
+            <span class="text-[11px] font-medium text-mut">Displayed on pack radar</span>
+          </div>
+          <input id="inputCallsign" type="text" placeholder="e.g. Nagraj" class="w-full px-4 py-3.5 rounded-2xl surface-subtle text-base font-bold placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-orange-500 transition" />
+        </div>
+
+        <!-- Marker Livery Color & Encrypted Room ID Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- Livery Color Dots -->
+          <div class="p-3.5 rounded-2xl surface-subtle flex flex-col justify-between gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-sec">Pin Color</span>
+              <span id="previewDefaultBikeIcon" class="w-5 h-5 flex items-center justify-center" style="color: var(--accent);">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/></svg>
+              </span>
+            </div>
+            <div id="colorPickerRow" class="flex items-center gap-2.5">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+
+          <!-- Ephemeral Random Room ID -->
+          <div class="p-3.5 rounded-2xl surface-subtle flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-sec">Session ID</div>
+              <div id="landingRoomId" class="font-mono-tech font-extrabold text-sm tracking-tight truncate" style="color: var(--accent);">MG-49X2</div>
+            </div>
+            <button id="btnNewRandomRoom" type="button" class="px-2.5 py-1.5 rounded-xl surface-card text-xs font-mono-tech font-bold hover:opacity-80 active:scale-95 transition shrink-0" title="Generate new random Room ID">
+              New ID
+            </button>
+          </div>
+        </div>
+
+        <!-- Launch Ride Button (Forces Hardware Location Sharing before entering!) -->
+        <button id="btnLaunchRide" type="button" class="w-full py-4 px-5 rounded-2xl font-display font-bold text-base tracking-tight text-white shadow-lg flex items-center justify-between transition active:scale-[0.99]" style="background: var(--accent);">
+          <span id="btnLaunchRideLabel">Start Broadcasting GPS</span>
+          <span id="btnLaunchRideBadge" class="font-mono-tech text-sm bg-black/20 px-2.5 py-1 rounded-lg">GO →</span>
+        </button>
+
+        <div class="flex items-center justify-between text-[11px] text-mut pt-0.5">
+          <span>📍 Location access is required to join ride</span>
+          <button id="btnOpenGpsHelpLanding" type="button" class="underline font-bold" style="color: var(--accent);">iOS GPS Help?</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Minimal Footer with Quirky Credit & GitHub Link -->
+    <div class="relative z-10 w-full max-w-md mx-auto flex items-center justify-between text-[11px] font-mono-tech text-mut pb-1 shrink-0">
+      <button id="btnFooterAbout" type="button" class="hover:underline flex items-center gap-1 font-semibold">
+        <span>⚡ Vibe coded by Nagraj Naik</span>
+      </button>
+      <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="hover:underline flex items-center gap-1 font-bold">
+        <span>GitHub</span>
+        <span>↗</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- 3. FLOATING MOBILE HUD OVERLAY (Uncluttered, Zero Bottom Clipping)    -->
+  <!-- ===================================================================== -->
+  <div id="hudOverlay" class="fixed inset-0 z-20 pointer-events-none hidden flex-col justify-between p-3 sm:p-4" style="padding-top: max(0.75rem, env(safe-area-inset-top)); padding-bottom: max(0.75rem, env(safe-area-inset-bottom));">
+
+    <!-- TOP FLOATING STACK: Navigation Pill + Stop Signal Banner -->
+    <div class="w-full max-w-lg mx-auto space-y-2 pointer-events-auto">
+      <!-- Top Bar Pill -->
+      <div class="surface-glass rounded-2xl p-2 flex items-center justify-between gap-2">
+        <!-- Brand + Room ID + Rider Count -->
+        <div class="flex items-center gap-2 min-w-0 pl-1">
+          <button id="btnEditRiderProfile" type="button" class="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm" style="background: var(--accent);" title="Edit Rider Profile">
+            <span id="hudRiderBadgeIcon" class="w-5 h-5 flex items-center justify-center"></span>
+          </button>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="font-display font-bold text-sm tracking-tight">motoGo<span style="color: var(--accent);">.</span></span>
+              <span id="hudRoomBadge" class="font-mono-tech font-bold text-[11px] px-1.5 py-0.5 rounded surface-subtle">MG-49X2</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px] font-semibold text-sec">
+              <span id="hudPackCountText">1 Rider</span>
+              <span>•</span>
+              <span id="hudMaxSpreadText" class="font-mono-tech font-bold text-emerald-600 dark:text-emerald-400">Spread 0m</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Controls: Day/Night + Invite + Exit Room -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="btnHudThemeToggle" type="button" class="w-9 h-9 rounded-xl surface-subtle flex items-center justify-center text-sm font-bold transition active:scale-95" title="Switch Daylight / Night Mode">
+            <span id="hudThemeIcon">☀️</span>
+          </button>
+
+          <button id="btnOpenShareSheet" type="button" class="px-3 h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Invite</span>
+          </button>
+
+          <button id="btnExitRideRoom" type="button" class="px-3 h-9 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition active:scale-95" title="Exit Room & Stop GPS">
+            <span>Exit</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- ACTIVE STOP / WAYPOINT SIGNAL BANNER (Transforms after Accepting!) -->
+      <div id="activeSignalBanner" class="hidden surface-card rounded-2xl p-3.5 border-2 border-amber-500 shadow-xl space-y-2.5">
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <span class="inline-block w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping shrink-0"></span>
+              <span id="signalSenderHeader" class="font-mono-tech font-extrabold text-[11px] uppercase tracking-wider text-rose-600 dark:text-rose-400">STOP SIGNAL • 0m AWAY</span>
+            </div>
+            <div id="signalMessageBody" class="font-bold text-sm mt-0.5 break-words">Stopping ahead — pull over!</div>
+            <div id="signalAcceptedList" class="text-[11px] font-mono-tech font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+              ✓ Accepted by: waiting for pack...
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Row 1: Shown ONLY before you accept the signal -->
+        <div id="signalPendingActions" class="flex items-center gap-2 pt-0.5">
+          <button id="btnAcknowledgeSignal" type="button" class="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow flex items-center justify-center gap-1.5 transition active:scale-95">
+            <span>✓ Accept & Copy That</span>
+          </button>
+          <button id="btnCenterOnSignalPending" type="button" class="px-3 py-2 rounded-xl surface-subtle font-bold text-xs">
+            Locate Pin
+          </button>
+          <button id="btnClearSignalPending" type="button" class="px-2.5 py-2 rounded-xl surface-subtle font-bold text-xs text-mut" title="Dismiss Signal">
+            Pass
+          </button>
+        </div>
+
+        <!-- Action Row 2: Meaningful Confirmed State shown AFTER you accept (or send) the signal -->
+        <div id="signalConfirmedActions" class="hidden items-center justify-between gap-2 pt-1 border-t" style="border-color: var(--border-strong);">
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-mono-tech font-extrabold text-xs">
+            <span>🏍️ Copy That • En Route</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <a id="btnNavigateToSignal" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold text-xs flex items-center gap-1">
+              <span>Directions</span>
+              <span>↗</span>
+            </a>
+            <button id="btnCenterOnSignalConfirmed" type="button" class="px-2.5 py-1.5 rounded-xl surface-subtle font-bold text-xs">
+              Pin
+            </button>
+            <button id="btnClearSignalConfirmed" type="button" class="px-2.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 font-bold text-xs" title="End stop signal for pack">
+              End Stop
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE RIGHT FLOATING MAP TOOLS -->
+    <div class="w-full max-w-lg mx-auto flex justify-end my-auto pointer-events-none">
+      <div class="flex flex-col gap-2 pointer-events-auto">
+        <button id="btnCenterSelf" type="button" class="w-10 h-10 rounded-2xl surface-glass flex items-center justify-center hover:opacity-90 active:scale-95 transition" title="Re-Lock My GPS & Center">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg>
+        </button>
+        <button id="btnFitPack" type="button" class="w-10 h-10 rounded-2xl surface-glass flex items-center justify-center hover:opacity-90 active:scale-95 transition" title="Fit entire pack on screen">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+        </button>
+        <button id="btnToggleMapTiles" type="button" class="w-10 h-10 rounded-2xl surface-glass flex items-center justify-center hover:opacity-90 active:scale-95 transition" title="Switch Map Style (Road / Terrain / Satellite)">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- BOTTOM FLOATING DOCK: Connected Riders Strip + 2 Primary Action Buttons -->
+    <div class="w-full max-w-lg mx-auto pointer-events-auto">
+      <div class="surface-glass rounded-3xl p-2.5 space-y-2.5">
+        <!-- Horizontal Scrollable Rider Telemetry Pills -->
+        <div id="bottomRidersStrip" class="flex items-center gap-2 overflow-x-auto no-scrollbar px-0.5">
+          <!-- Populated dynamically by JS -->
+        </div>
+
+        <!-- Two Primary Glove-Friendly Action Buttons -->
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnOpenSignalModal" type="button" class="py-3.5 px-4 rounded-2xl font-display font-bold text-xs sm:text-sm text-white shadow-md flex items-center justify-center gap-2 transition active:scale-[0.99]" style="background: var(--accent);">
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Signal Stop / Pin</span>
+          </button>
+
+          <button id="btnOpenPackDrawer" type="button" class="py-3.5 px-4 rounded-2xl surface-subtle font-display font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition active:scale-[0.99]">
+            <svg class="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span id="btnPackDrawerLabel">Pack & Distances (1)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL: iOS / ANDROID LOCATION PERMISSION TROUBLESHOOTER               -->
+  <!-- ===================================================================== -->
+  <div id="gpsPermissionModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[90dvh] overflow-y-auto p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-lg">
+            📍
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-base leading-tight">Location Access Required</h3>
+            <p id="gpsErrorReasonText" class="text-[11px] font-mono-tech text-rose-600 dark:text-rose-400">iOS / Browser blocked the GPS prompt</p>
+          </div>
+        </div>
+        <button id="btnCloseGpsModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
+      </div>
+
+      <p class="text-xs text-sec leading-relaxed">
+        To broadcast your live motorcycle position to your pack, your browser needs permission to read your GPS. On <strong>iPhone (iOS)</strong>, the prompt is suppressed if Location Services is turned off in any of these 3 places:
+      </p>
+
+      <div class="space-y-2.5 text-xs">
+        <div class="p-3.5 rounded-2xl surface-subtle space-y-1">
+          <div class="font-bold flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-orange-600 text-white font-mono-tech text-[10px]">1</span>
+            <span>Opened inside WhatsApp? Open in Safari</span>
+          </div>
+          <p class="text-[11px] text-sec leading-relaxed">
+            WhatsApp's built-in preview browser on iPhone often blocks GPS prompts. Tap the <strong>Safari compass icon (🧭)</strong> at the bottom-right corner of your screen to open this link in real Safari.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-2xl surface-subtle space-y-1">
+          <div class="font-bold flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-orange-600 text-white font-mono-tech text-[10px]">2</span>
+            <span>iPhone System Settings (Most Common on iOS)</span>
+          </div>
+          <p class="text-[11px] text-sec leading-relaxed">
+            Open iPhone <strong>Settings → Privacy & Security → Location Services → Safari Websites</strong>, select <strong>While Using the App</strong>, and switch on <strong>Precise Location</strong>.
+          </p>
+        </div>
+
+        <div class="p-3.5 rounded-2xl surface-subtle space-y-1">
+          <div class="font-bold flex items-center gap-1.5">
+            <span class="px-1.5 py-0.5 rounded bg-orange-600 text-white font-mono-tech text-[10px]">3</span>
+            <span>Safari Address Bar Website Settings</span>
+          </div>
+          <p class="text-[11px] text-sec leading-relaxed">
+            Tap the <strong>aA</strong> or <strong>Page Settings</strong> icon on the left side of the Safari address bar → tap <strong>Website Settings → Location → Allow</strong>, then refresh the page.
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-2 pt-1">
+        <button id="btnRetryGpsNow" type="button" class="w-full py-3.5 px-4 rounded-2xl text-white font-display font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition active:scale-95" style="background: var(--accent);">
+          <span>🔄 Request GPS Permission Again</span>
+        </button>
+
+        <button id="btnContinueDemoFallback" type="button" class="w-full py-2.5 px-4 rounded-xl surface-subtle text-[11px] font-mono-tech font-bold text-mut hover:text-sec transition">
+          Continue in Demo Mode (Testing Only — No Real GPS)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 0: ABOUT motoGo & QUIRKY VIBE-CODED CREDITS                     -->
+  <!-- ===================================================================== -->
+  <div id="aboutModal" class="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[88dvh] overflow-y-auto p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white" style="background: var(--accent);">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/>
+              <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-display font-bold text-lg leading-tight">About motoGo<span style="color: var(--accent);">.</span></h3>
+            <p class="text-[11px] font-mono-tech text-sec">Zero-Rupee Pack Radar for Riders</p>
+          </div>
+        </div>
+        <button id="btnCloseAboutModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
+      </div>
+
+      <!-- Features List -->
+      <div class="space-y-2.5 text-xs">
+        <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-mut">What This App Does</div>
+
+        <div class="p-3 rounded-2xl surface-subtle flex items-start gap-3">
+          <span class="text-base mt-0.5">📡</span>
+          <div>
+            <div class="font-bold">Live Multi-Bike GPS & Distance Tethers</div>
+            <div class="text-sec text-[11px] mt-0.5">Tracks every rider on a shared map with live Haversine distance badges, compass bearings, and total pack spread.</div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-2xl surface-subtle flex items-start gap-3">
+          <span class="text-base mt-0.5">💬</span>
+          <div>
+            <div class="font-bold">1-Tap WhatsApp Room Invites</div>
+            <div class="text-sec text-[11px] mt-0.5">Generates a fresh random Session ID (`MG-XXXX`) every ride. Forward the link on WhatsApp—no login walls or app installs.</div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-2xl surface-subtle flex items-start gap-3">
+          <span class="text-base mt-0.5">🛑</span>
+          <div>
+            <div class="font-bold">Stop Signals with "Copy That" Confirmations</div>
+            <div class="text-sec text-[11px] mt-0.5">Drop a fuel, chai, or SOS stop marker at your coordinates and see live checkmarks as your pack taps Accept.</div>
+          </div>
+        </div>
+
+        <div class="p-3 rounded-2xl surface-subtle flex items-start gap-3">
+          <span class="text-base mt-0.5">🧭</span>
+          <div>
+            <div class="font-bold">Instant Google Maps Handoff</div>
+            <div class="text-sec text-[11px] mt-0.5">Tap any separated friend's pin or stop signal to launch turn-by-turn Google Maps navigation straight to their live spot.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quirky Vibe-Coded Credit Box -->
+      <div class="p-4 rounded-2xl border-2 border-dashed space-y-3" style="border-color: var(--accent); background: rgba(255, 59, 0, 0.06);">
+        <div class="flex items-center justify-between">
+          <span class="text-[10px] font-mono-tech font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-orange-500/20" style="color: var(--accent);">⚡ Vibe Coded</span>
+          <span class="text-[11px] font-mono-tech font-bold text-sec">100% Throttle • ₹0 Cloud</span>
+        </div>
+        <p class="text-xs font-medium leading-relaxed">
+          Unapologetically <strong>vibe coded by Nagraj Naik</strong> fueled by filter coffee, late-night prompts, and the collective trauma of spending two hours hunting for lost friends who took the wrong highway exit.
+        </p>
+        <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-white dark:text-zinc-950 font-display font-bold text-xs flex items-center justify-center gap-2 shadow transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+          <span>View @nagrjnaik/motogo on GitHub</span>
+          <span>↗</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 1: SIGNAL STOP / DROP WAYPOINT MARKER                           -->
+  <!-- ===================================================================== -->
+  <div id="signalModal" class="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-display font-bold text-lg">Signal Stop & Drop Marker</h3>
+          <p class="text-xs text-sec font-medium">Drops a high-visibility pin at your GPS and tracks who accepts it</p>
+        </div>
+        <button id="btnCloseSignalModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2.5">
+        <button type="button" data-msg="Pulling over here — wait up!" class="quick-signal-btn p-3.5 rounded-2xl surface-subtle hover:border-orange-500 text-left transition">
+          <div class="font-display font-bold text-xs">🛑 Pull Over Here</div>
+          <div class="text-[11px] text-mut mt-0.5">Regroup at my current pin</div>
+        </button>
+        <button type="button" data-msg="Stopping for fuel / petrol pump" class="quick-signal-btn p-3.5 rounded-2xl surface-subtle hover:border-orange-500 text-left transition">
+          <div class="font-display font-bold text-xs">⛽ Fuel Stop</div>
+          <div class="text-[11px] text-mut mt-0.5">Refueling break ahead</div>
+        </button>
+        <button type="button" data-msg="Quick coffee / water break here" class="quick-signal-btn p-3.5 rounded-2xl surface-subtle hover:border-orange-500 text-left transition">
+          <div class="font-display font-bold text-xs">☕ Rest / Hydration</div>
+          <div class="text-[11px] text-mut mt-0.5">5-minute roadside stop</div>
+        </button>
+        <button type="button" data-msg="SOS: Mechanical issue / flat tire!" class="quick-signal-btn p-3.5 rounded-2xl border border-rose-500/50 bg-rose-500/10 text-left transition">
+          <div class="font-display font-bold text-xs text-rose-600 dark:text-rose-400">🚨 Breakdown SOS</div>
+          <div class="text-[11px] text-mut mt-0.5">Urgent assistance needed</div>
+        </button>
+      </div>
+
+      <div class="flex gap-2 pt-1">
+        <input id="inputCustomStopMsg" type="text" placeholder="Custom signal message..." class="flex-1 px-3.5 py-3 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
+        <button id="btnSendCustomStopMsg" type="button" class="px-4 py-3 rounded-xl text-white font-display font-bold text-xs shrink-0" style="background: var(--accent);">
+          Send Signal
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL 2: WHATSAPP INVITE & PACK DISTANCES SHEET                       -->
+  <!-- ===================================================================== -->
+  <div id="packModal" class="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] flex flex-col p-5 space-y-4">
+      <div class="flex items-center justify-between shrink-0">
+        <div>
+          <h3 class="font-display font-bold text-lg">Pack Radar & Invite Link</h3>
+          <p class="text-xs font-mono-tech text-sec">ROOM ID: <strong id="modalRoomIdText" style="color: var(--accent);"></strong></p>
+        </div>
+        <button id="btnClosePackModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
+      </div>
+
+      <!-- Shareable Link + WhatsApp CTA -->
+      <div class="p-3.5 rounded-2xl surface-subtle space-y-2.5 shrink-0">
+        <div class="flex items-center justify-between text-[11px] font-mono-tech font-bold uppercase text-sec">
+          <span>Invite Link for Friends</span>
+          <button id="btnCopyRoomLink" type="button" class="underline" style="color: var(--accent);">Copy URL</button>
+        </div>
+        <input id="inputShareableUrl" type="text" readonly class="w-full px-3 py-2 rounded-xl surface-card font-mono-tech text-xs font-bold focus:outline-none" />
+        <a id="btnWhatsAppForward" href="https://wa.me/" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 rounded-xl bg-[#25D366] hover:bg-[#1ebe5d] text-slate-950 font-display font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition">
+          <span>Share Ride Link on WhatsApp</span>
+          <span>↗</span>
+        </a>
+      </div>
+
+      <!-- Live Rider Distances List -->
+      <div class="space-y-2 overflow-y-auto flex-1 pr-0.5">
+        <div class="text-[11px] font-mono-tech font-bold uppercase tracking-wider text-sec">Connected Riders & Distance From You</div>
+        <div id="packDistancesList" class="space-y-2">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Simulate Friend Joining (For instant single-phone testing) -->
+      <div class="border-t pt-3 space-y-2 shrink-0" style="border-color: var(--border-strong);">
+        <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-mut">Demo / Test a Friend Joining Room</div>
+        <div class="flex gap-2">
+          <input id="inputSimFriendName" type="text" placeholder="Friend's Name (e.g. Granthali)" class="flex-1 px-3 py-2 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
+          <button id="btnAddSimFriend" type="button" class="px-3.5 py-2 rounded-xl font-display font-bold text-xs text-white shrink-0" style="background: var(--accent);">
+            + Add Rider
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toastBanner" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 opacity-0 -translate-y-2">
+    <div id="toastText" class="px-4 py-2 rounded-full surface-card font-mono-tech text-xs font-bold shadow-2xl border-2" style="border-color: var(--accent);">
+      Ready
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // UNIVERSAL DEFAULT MOTORCYCLE ICON & LIVERY PALETTE
+    // =========================================================================
+    const DEFAULT_BIKE_SVG = `<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/></svg>`;
+
+    const LIVERY_COLORS = [
+      { name: 'International Orange', hex: '#ff3b00' },
+      { name: 'British Racing Green', hex: '#059669' },
+      { name: 'Yamaha Cobalt', hex: '#2563eb' },
+      { name: 'Rosso Corsa', hex: '#e11d48' },
+      { name: 'Apex Purple', hex: '#7c3aed' }
+    ];
+
+    function generateRandomRoomCode() {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = 'MG-';
+      for (let i = 0; i < 4; i++) {
+        code += alphabet[Math.floor(Math.random() * alphabet.length)];
+      }
+      return code;
+    }
+
+    const queryParams = new URLSearchParams(window.location.search || window.location.hash.replace(/^#/, '?'));
+    const roomFromLink = queryParams.get('room');
+
+    const state = {
+      theme: 'light',
+      roomCode: roomFromLink ? roomFromLink.toUpperCase() : generateRandomRoomCode(),
+      myId: 'rider-' + Math.random().toString(36).substring(2, 9),
+      selectedColor: '#ff3b00',
+      mqttClient: null,
+      mqttConnected: false,
+      gpsWatchId: null,
+      usingHardwareGps: false,
+      isBroadcasting: false,
+      mapLayerIndex: 0,
+      activeSignal: null,
+      riders: [
+        {
+          id: 'me',
+          name: 'You',
+          color: '#ff3b00',
+          isMe: true,
+          lat: 13.0068,
+          lng: 77.6503,
+          speedKmh: 0
+        }
+      ]
+    };
+    state.riders[0].id = state.myId;
+
+    function getMe() {
+      return state.riders.find(r => r.isMe) || state.riders[0];
+    }
+
+    // Detect if opened inside iOS WhatsApp / social in-app browser
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isInAppWebView = /WhatsApp|FBAN|FBAV|Instagram|Line/i.test(ua);
+    if (isIOS && isInAppWebView) {
+      document.getElementById('iosInAppWarning').classList.remove('hidden');
+    }
+
+    // =========================================================================
+    // RENDER LANDING PAGE CONTROLS
+    // =========================================================================
+    function renderLandingColors() {
+      const previewIcon = document.getElementById('previewDefaultBikeIcon');
+      if (previewIcon) previewIcon.style.color = state.selectedColor;
+
+      const colorRow = document.getElementById('colorPickerRow');
+      colorRow.innerHTML = LIVERY_COLORS.map(col => {
+        const active = state.selectedColor === col.hex;
+        return `
+          <button type="button" data-hex="${col.hex}" class="livery-color-btn w-7 h-7 rounded-full transition transform ${
+            active ? 'scale-110 ring-2 ring-offset-2 ring-slate-900 dark:ring-white' : 'opacity-70 hover:opacity-100'
+          }" style="background:${col.hex};" title="${col.name}"></button>
+        `;
+      }).join('');
+
+      colorRow.querySelectorAll('.livery-color-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.selectedColor = btn.getAttribute('data-hex');
+          renderLandingColors();
+        });
+      });
+    }
+
+    document.getElementById('landingRoomId').textContent = state.roomCode;
+    if (roomFromLink) {
+      document.getElementById('inviteDetectedCard').classList.remove('hidden');
+      document.getElementById('inviteRoomCodeText').textContent = state.roomCode;
+    }
+
+    try {
+      const savedName = localStorage.getItem('motogo_v5_name');
+      if (savedName) document.getElementById('inputCallsign').value = savedName;
+      const savedColor = localStorage.getItem('motogo_v5_color');
+      if (savedColor) state.selectedColor = savedColor;
+      const savedTheme = localStorage.getItem('motogo_v5_theme');
+      if (savedTheme === 'dark') setThemeMode('dark');
+    } catch (e) {}
+
+    renderLandingColors();
+
+    // =========================================================================
+    // DAYLIGHT / NIGHT MODE TOGGLE
+    // =========================================================================
+    function setThemeMode(mode) {
+      state.theme = mode;
+      if (mode === 'dark') {
+        document.body.classList.add('dark-mode');
+        document.getElementById('landingThemeText').textContent = 'Night';
+        document.getElementById('landingThemeDot').className = 'w-2 h-2 rounded-full bg-indigo-400';
+        document.getElementById('hudThemeIcon').textContent = '🌙';
+      } else {
+        document.body.classList.remove('dark-mode');
+        document.getElementById('landingThemeText').textContent = 'Daylight';
+        document.getElementById('landingThemeDot').className = 'w-2 h-2 rounded-full bg-amber-500';
+        document.getElementById('hudThemeIcon').textContent = '☀️';
+      }
+      try { localStorage.setItem('motogo_v5_theme', mode); } catch (e) {}
+      drawVectorRoadCanvas();
+    }
+
+    document.getElementById('btnLandingTheme').addEventListener('click', () => {
+      setThemeMode(state.theme === 'light' ? 'dark' : 'light');
+    });
+    document.getElementById('btnHudThemeToggle').addEventListener('click', () => {
+      setThemeMode(state.theme === 'light' ? 'dark' : 'light');
+      showToast(state.theme === 'light' ? 'Daylight High-Contrast Mode' : 'Night Dark Mode');
+    });
+
+    document.getElementById('btnNewRandomRoom').addEventListener('click', () => {
+      state.roomCode = generateRandomRoomCode();
+      document.getElementById('landingRoomId').textContent = state.roomCode;
+      document.getElementById('inviteDetectedCard').classList.add('hidden');
+      showToast(`Generated secure ID: ${state.roomCode}`);
+    });
+
+    // About Modal Listeners
+    function openAboutModal() {
+      const m = document.getElementById('aboutModal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    }
+    function closeAboutModal() {
+      const m = document.getElementById('aboutModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    }
+    document.getElementById('btnOpenAboutModal').addEventListener('click', openAboutModal);
+    document.getElementById('btnFooterAbout').addEventListener('click', openAboutModal);
+    document.getElementById('btnCloseAboutModal').addEventListener('click', closeAboutModal);
+
+    // =========================================================================
+    // GEOMETRY & HAVERSINE DISTANCE HELPERS
+    // =========================================================================
+    function haversineKm(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function computeBearing(lat1, lon1, lat2, lon2) {
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+    }
+
+    function bearingToCardinal(deg) {
+      const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      return dirs[Math.round(deg / 45) % 8];
+    }
+
+    function formatDistance(km) {
+      if (km < 1.0) return `${Math.round(km * 1000)}m`;
+      return `${km.toFixed(2)}km`;
+    }
+
+    function googleMapsLink(destLat, destLng, origLat, origLng) {
+      if (origLat && origLng) {
+        return `https://www.google.com/maps/dir/?api=1&origin=${origLat.toFixed(6)},${origLng.toFixed(6)}&destination=${destLat.toFixed(6)},${destLng.toFixed(6)}&travelmode=driving`;
+      }
+      return `https://www.google.com/maps/dir/?api=1&destination=${destLat.toFixed(6)},${destLng.toFixed(6)}&travelmode=driving`;
+    }
+
+    // =========================================================================
+    // LEAFLET MAP + GUARANTEED VECTOR ROAD CANVAS
+    // =========================================================================
+    const MAP_STYLES = [
+      { name: 'Google Road Map', url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}' },
+      { name: 'OpenStreetMap', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png' },
+      { name: 'Google Terrain', url: 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}' },
+      { name: 'Google Satellite', url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}' }
+    ];
+
+    const map = L.map('map', {
+      center: [13.0068, 77.6503],
+      zoom: 15,
+      zoomControl: false
+    });
+
+    let activeTileLayer = L.tileLayer(MAP_STYLES[0].url, { maxZoom: 20 }).addTo(map);
+    const tetherLayerGroup = L.layerGroup().addTo(map);
+    const riderLayerGroup = L.layerGroup().addTo(map);
+    const signalLayerGroup = L.layerGroup().addTo(map);
+    const markerRefs = {};
+
+    function drawVectorRoadCanvas() {
+      const canvas = document.getElementById('fallbackMapCanvas');
+      if (!canvas) return;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const isDark = state.theme === 'dark';
+
+      ctx.fillStyle = isDark ? '#0d1017' : '#eaeae4';
+      ctx.fillRect(0, 0, w, h);
+
+      const toPt = (lat, lng) => map.latLngToContainerPoint([lat, lng]);
+      const bounds = map.getBounds();
+      const south = Math.floor(bounds.getSouth() * 200) / 200;
+      const north = Math.ceil(bounds.getNorth() * 200) / 200;
+      const west = Math.floor(bounds.getWest() * 200) / 200;
+      const east = Math.ceil(bounds.getEast() * 200) / 200;
+
+      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)';
+      ctx.lineWidth = 1;
+      for (let lat = south; lat <= north; lat += 0.005) {
+        const p1 = toPt(lat, west), p2 = toPt(lat, east);
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      }
+      for (let lng = west; lng <= east; lng += 0.005) {
+        const p1 = toPt(south, lng), p2 = toPt(north, lng);
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      }
+
+      const me = getMe();
+      const hwy = [
+        toPt(me.lat - 0.03, me.lng - 0.015),
+        toPt(me.lat - 0.01, me.lng - 0.004),
+        toPt(me.lat, me.lng),
+        toPt(me.lat + 0.014, me.lng + 0.006),
+        toPt(me.lat + 0.03, me.lng + 0.015)
+      ];
+      ctx.strokeStyle = isDark ? '#ff4d15' : '#fb923c';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      hwy.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    }
+
+    map.on('move zoom viewreset resize', drawVectorRoadCanvas);
+
+    // =========================================================================
+    // ZERO-COST REALTIME ROOM SYNC (MQTT OVER WEBSOCKETS + BROADCASTCHANNEL)
+    // =========================================================================
+    let localChannel = null;
+    try {
+      if ('BroadcastChannel' in window) {
+        localChannel = new BroadcastChannel('motogo_pack_v5');
+        localChannel.onmessage = (ev) => processSyncMessage(ev.data);
+      }
+    } catch (e) {}
+
+    function connectCloudRoom() {
+      const topic = `motogo/v5/room/${state.roomCode}`;
+      publishRoomState({ type: 'RIDER_UPDATE' });
+
+      if (typeof mqtt !== 'undefined') {
+        try {
+          if (state.mqttClient) state.mqttClient.end(true);
+          const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+            clientId: 'motogo_' + state.myId + '_' + Math.floor(Math.random() * 999),
+            clean: true,
+            connectTimeout: 5000,
+            reconnectPeriod: 4000
+          });
+          state.mqttClient = client;
+          client.on('connect', () => {
+            state.mqttConnected = true;
+            client.subscribe(topic, { qos: 0 });
+            publishRoomState({ type: 'RIDER_UPDATE' });
+          });
+          client.on('message', (t, buf) => {
+            try { processSyncMessage(JSON.parse(buf.toString())); } catch (e) {}
+          });
+        } catch (e) {}
+      }
+    }
+
+    function publishRoomState(extra = {}) {
+      if (!state.isBroadcasting && extra.type !== 'RIDER_EXIT') return;
+      const me = getMe();
+      const packet = {
+        roomCode: state.roomCode,
+        rider: {
+          id: me.id,
+          name: me.name,
+          color: me.color,
+          lat: me.lat,
+          lng: me.lng,
+          speedKmh: me.speedKmh
+        },
+        activeSignal: state.activeSignal,
+        ...extra
+      };
+      if (localChannel) {
+        try { localChannel.postMessage(packet); } catch (e) {}
+      }
+      if (state.mqttClient && state.mqttConnected) {
+        try {
+          state.mqttClient.publish(`motogo/v5/room/${state.roomCode}`, JSON.stringify(packet));
+        } catch (e) {}
+      }
+    }
+
+    function processSyncMessage(data) {
+      if (!data || data.roomCode !== state.roomCode) return;
+
+      if (data.type === 'RIDER_EXIT' && data.riderId) {
+        state.riders = state.riders.filter(r => r.id !== data.riderId || r.isMe);
+        renderHUD();
+        return;
+      }
+
+      if (data.rider && data.rider.id !== state.myId) {
+        const inc = data.rider;
+        const found = state.riders.find(r => r.id === inc.id);
+        if (!found) {
+          state.riders.push({ ...inc, isMe: false });
+          showToast(`${inc.name} joined Room ${state.roomCode}`);
+          fitAllPackRiders();
+        } else {
+          Object.assign(found, inc, { isMe: false });
+        }
+      }
+
+      if (data.type === 'STOP_SIGNAL' && data.activeSignal) {
+        state.activeSignal = data.activeSignal;
+        playAlertChime();
+        showToast(`🛑 ${data.activeSignal.senderName}: ${data.activeSignal.message}`);
+      } else if (data.type === 'SIGNAL_ACK' && data.signalId && data.ackRiderName) {
+        if (state.activeSignal && state.activeSignal.id === data.signalId) {
+          if (!state.activeSignal.acceptedBy.includes(data.ackRiderName)) {
+            state.activeSignal.acceptedBy.push(data.ackRiderName);
+            showToast(`✓ ${data.ackRiderName} accepted your stop signal`);
+          }
+        }
+      } else if (data.type === 'CLEAR_SIGNAL') {
+        state.activeSignal = null;
+      }
+
+      renderHUD();
+    }
+
+    setInterval(() => {
+      if (!state.isBroadcasting) return;
+      state.riders.forEach(r => {
+        if (r.isSimFriend) {
+          r.lat += (Math.random() - 0.46) * 0.00022;
+          r.lng += (Math.random() - 0.48) * 0.00022;
+          r.speedKmh = Math.max(28, Math.min(58, (r.speedKmh || 40) + Math.round((Math.random() - 0.5) * 4)));
+          if (state.activeSignal && !state.activeSignal.acceptedBy.includes(r.name)) {
+            state.activeSignal.acceptedBy.push(r.name);
+            showToast(`✓ ${r.name} accepted your Stop Signal`);
+          }
+        }
+      });
+      publishRoomState({ type: 'RIDER_UPDATE' });
+      renderHUD();
+    }, 3000);
+
+    // =========================================================================
+    // SYNTHESIZED AUDIO ALERT FOR STOP SIGNALS
+    // =========================================================================
+    let audioCtx = null;
+    function playAlertChime() {
+      try {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioClass) return;
+        if (!audioCtx) audioCtx = new AudioClass();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, now);
+        osc.frequency.setValueAtTime(880, now + 0.12);
+        gain.gain.setValueAtTime(0.14, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      } catch (e) {}
+    }
+
+    // =========================================================================
+    // RENDER MAP MARKERS, STOP SIGNAL & FLOATING DOCK
+    // =========================================================================
+    function renderHUD() {
+      drawVectorRoadCanvas();
+      const me = getMe();
+
+      Object.keys(markerRefs).forEach(id => {
+        if (!state.riders.some(r => r.id === id)) {
+          map.removeLayer(markerRefs[id]);
+          delete markerRefs[id];
+        }
+      });
+
+      let maxSpreadKm = 0;
+      for (let i = 0; i < state.riders.length; i++) {
+        for (let j = i + 1; j < state.riders.length; j++) {
+          const d = haversineKm(state.riders[i].lat, state.riders[i].lng, state.riders[j].lat, state.riders[j].lng);
+          if (d > maxSpreadKm) maxSpreadKm = d;
+        }
+      }
+
+      const enriched = state.riders.map(r => {
+        const distKm = r.isMe ? 0 : haversineKm(me.lat, me.lng, r.lat, r.lng);
+        const bearing = r.isMe ? 0 : computeBearing(me.lat, me.lng, r.lat, r.lng);
+        const cardinal = bearingToCardinal(bearing);
+        return { ...r, distKm, bearing, cardinal };
+      });
+
+      // Top Bar Telemetry
+      document.getElementById('hudRiderBadgeIcon').innerHTML = DEFAULT_BIKE_SVG;
+      document.getElementById('btnEditRiderProfile').style.background = me.color;
+      document.getElementById('hudRoomBadge').textContent = state.roomCode;
+      document.getElementById('hudPackCountText').textContent =
+        state.riders.length === 1 ? '1 Rider' : `${state.riders.length} Riders`;
+      document.getElementById('hudMaxSpreadText').textContent = `Spread ${formatDistance(maxSpreadKm)}`;
+      document.getElementById('btnPackDrawerLabel').textContent = `Pack & Distances (${state.riders.length})`;
+
+      // Map Pins & Tether Lines
+      tetherLayerGroup.clearLayers();
+      enriched.forEach(r => {
+        const distTag = r.isMe ? 'YOU' : formatDistance(r.distKm);
+        const markerHtml = `
+          <div class="rider-pin-node">
+            <div class="rider-radar-pulse" style="background:${r.color}44; border: 2px solid ${r.color};"></div>
+            <div style="background:#09090b; color:#ffffff; border: 2px solid #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.35);" class="px-2.5 py-0.5 rounded-full mb-1 flex items-center gap-1.5 whitespace-nowrap">
+              <span style="width:8px; height:8px; border-radius:9999px; background:${r.color}; border:1px solid #ffffff; display:inline-block;"></span>
+              <span style="color:#ffffff; font-size:11px; font-weight:800;">${r.name}</span>
+              <span style="background:#ffffff; color:#09090b; font-size:10px; font-weight:800; padding:1px 6px; border-radius:9999px;" class="font-mono-tech">${distTag}</span>
+            </div>
+            <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xl border-2 border-white" style="background:${r.color}; color:#ffffff;">
+              ${DEFAULT_BIKE_SVG}
+            </div>
+          </div>
+        `;
+
+        const divIcon = L.divIcon({
+          className: '',
+          html: markerHtml,
+          iconSize: [1, 1],
+          iconAnchor: [0, 0]
+        });
+
+        const gmapsUrl = googleMapsLink(r.lat, r.lng, me.lat, me.lng);
+        const popupHtml = `
+          <div class="text-xs space-y-2.5 min-w-[185px]" style="color:#09090b;">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5 font-extrabold text-sm" style="color:#09090b;">
+                <span style="width:10px; height:10px; border-radius:9999px; background:${r.color}; display:inline-block;"></span>
+                <span>${r.name}</span>
+              </div>
+              <span class="font-mono-tech text-[11px] font-bold px-1.5 py-0.5 rounded bg-zinc-100" style="color:#3f3f46;">${r.speedKmh || 0} km/h</span>
+            </div>
+            ${r.isMe ? `<div class="text-emerald-700 font-bold text-xs">Your live GPS marker</div>` : `
+              <div class="font-mono-tech font-bold text-xs bg-zinc-100 px-2.5 py-1.5 rounded-lg" style="color:#09090b;">
+                Distance: <span style="color:#09090b; font-weight:800;">${formatDistance(r.distKm)} (${r.cardinal})</span>
+              </div>
+              <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="gmaps-popup-btn block w-full text-center py-2.5 px-3 rounded-xl font-display font-bold text-xs shadow" style="background:#09090b !important; color:#ffffff !important;">
+                Navigate in Google Maps ↗
+              </a>
+            `}
+          </div>
+        `;
+
+        if (markerRefs[r.id]) {
+          markerRefs[r.id].setLatLng([r.lat, r.lng]);
+          markerRefs[r.id].setIcon(divIcon);
+          markerRefs[r.id].setPopupContent(popupHtml);
+        } else {
+          const m = L.marker([r.lat, r.lng], { icon: divIcon, draggable: true }).addTo(riderLayerGroup);
+          m.bindPopup(popupHtml);
+          m.on('dragend', (ev) => {
+            const pos = ev.target.getLatLng();
+            const target = state.riders.find(x => x.id === r.id);
+            if (target) {
+              target.lat = pos.lat;
+              target.lng = pos.lng;
+              publishRoomState({ type: 'RIDER_UPDATE' });
+              renderHUD();
+            }
+          });
+          markerRefs[r.id] = m;
+        }
+
+        if (!r.isMe) {
+          L.polyline([[me.lat, me.lng], [r.lat, r.lng]], {
+            color: '#09090b',
+            weight: 3,
+            dashArray: '6, 6',
+            opacity: 0.85
+          }).addTo(tetherLayerGroup);
+
+          const midLat = (me.lat + r.lat) / 2;
+          const midLng = (me.lng + r.lng) / 2;
+          const badgeIcon = L.divIcon({
+            className: '',
+            html: `<div class="tether-distance-tag">${formatDistance(r.distKm)} • ${r.cardinal}</div>`,
+            iconSize: [1, 1]
+          });
+          L.marker([midLat, midLng], { icon: badgeIcon, interactive: false }).addTo(tetherLayerGroup);
+        }
+      });
+
+      // Render Active Stop Signal Pin & Top Banner
+      signalLayerGroup.clearLayers();
+      const sigBanner = document.getElementById('activeSignalBanner');
+      if (state.activeSignal) {
+        const sig = state.activeSignal;
+        sigBanner.classList.remove('hidden');
+        const distToSig = haversineKm(me.lat, me.lng, sig.lat, sig.lng);
+        document.getElementById('signalSenderHeader').textContent =
+          `🛑 STOP SIGNAL FROM ${sig.senderName.toUpperCase()} • ${formatDistance(distToSig)} AWAY`;
+        document.getElementById('signalMessageBody').textContent = sig.message;
+
+        const acceptedList = Array.isArray(sig.acceptedBy) ? sig.acceptedBy : [];
+        document.getElementById('signalAcceptedList').textContent =
+          acceptedList.length > 0
+            ? `✓ Accepted by: ${acceptedList.join(', ')}`
+            : `Waiting for riders to tap Accept...`;
+
+        const iHaveAccepted = acceptedList.includes(me.name);
+        const pendingRow = document.getElementById('signalPendingActions');
+        const confirmedRow = document.getElementById('signalConfirmedActions');
+
+        if (iHaveAccepted) {
+          pendingRow.classList.add('hidden');
+          confirmedRow.classList.remove('hidden');
+          confirmedRow.classList.add('flex');
+          document.getElementById('btnNavigateToSignal').href = googleMapsLink(sig.lat, sig.lng, me.lat, me.lng);
+        } else {
+          pendingRow.classList.remove('hidden');
+          confirmedRow.classList.add('hidden');
+          confirmedRow.classList.remove('flex');
+        }
+
+        const sigIcon = L.divIcon({
+          className: '',
+          html: `
+            <div class="rider-pin-node">
+              <div class="rider-radar-pulse" style="background:#e11d4855; border: 3px solid #e11d48;"></div>
+              <div style="background:#09090b; color:#ffffff; border: 2px solid #ffffff;" class="px-2.5 py-1 rounded-full font-mono-tech font-bold text-[11px] shadow-xl mb-1 whitespace-nowrap">
+                🛑 ${sig.senderName}: ${sig.message}
+              </div>
+              <div class="w-10 h-10 rounded-2xl bg-amber-500 border-2 border-white flex items-center justify-center text-slate-950 font-extrabold shadow-2xl">
+                🛑
+              </div>
+            </div>
+          `,
+          iconSize: [1, 1]
+        });
+        L.marker([sig.lat, sig.lng], { icon: sigIcon }).addTo(signalLayerGroup);
+      } else {
+        sigBanner.classList.add('hidden');
+      }
+
+      // Render Bottom Dock Rider Strip
+      const stripEl = document.getElementById('bottomRidersStrip');
+      stripEl.innerHTML = enriched.map(r => `
+        <button type="button" data-focus="${r.id}" class="dock-rider-chip shrink-0 px-3 py-1.5 rounded-2xl surface-subtle flex items-center gap-2 text-xs font-bold transition active:scale-95">
+          <span class="w-3 h-3 rounded-full border border-white shadow-sm shrink-0" style="background:${r.color};"></span>
+          <span>${r.name}</span>
+          <span class="font-mono-tech text-[11px] px-1.5 py-0.5 rounded-lg surface-card font-extrabold">
+            ${r.isMe ? 'YOU' : formatDistance(r.distKm)}
+          </span>
+        </button>
+      `).join('');
+
+      stripEl.querySelectorAll('.dock-rider-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-focus');
+          const found = state.riders.find(x => x.id === id);
+          if (found) {
+            map.flyTo([found.lat, found.lng], 16, { duration: 0.5 });
+            if (markerRefs[id]) markerRefs[id].openPopup();
+          }
+        });
+      });
+
+      // Render Pack Modal Distances List
+      const listEl = document.getElementById('packDistancesList');
+      listEl.innerHTML = enriched.map(r => {
+        const gmapsUrl = googleMapsLink(r.lat, r.lng, me.lat, me.lng);
+        return `
+          <div class="p-3 rounded-2xl surface-subtle flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 border border-white/40" style="background:${r.color}">
+                ${DEFAULT_BIKE_SVG}
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-sm truncate">${r.name} ${r.isMe ? '(You)' : ''}</div>
+                <div class="font-mono-tech text-[11px] text-sec">
+                  ${r.isMe ? 'Broadcasting live GPS' : `${formatDistance(r.distKm)} away • Bearing ${r.cardinal}`}
+                </div>
+              </div>
+            </div>
+            ${r.isMe ? `<span class="font-mono-tech text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">LIVE</span>` : `
+              <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 font-display font-bold text-xs shrink-0">
+                Maps ↗
+              </a>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // iOS & ANDROID FORCED LOCATION SHARING & FALLBACK ENGINE
+    // =========================================================================
+    function applyGpsCoordinates(pos) {
+      const { latitude, longitude, speed } = pos.coords;
+      const me = getMe();
+      me.lat = latitude;
+      me.lng = longitude;
+      if (speed !== null && !isNaN(speed)) {
+        me.speedKmh = Math.max(0, Math.round(speed * 3.6));
+      }
+      state.usingHardwareGps = true;
+    }
+
+    function beginContinuousGpsWatch(highAccuracy = true) {
+      if (!('geolocation' in navigator)) return;
+      if (state.gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(state.gpsWatchId);
+      }
+      state.gpsWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          applyGpsCoordinates(pos);
+          publishRoomState({ type: 'RIDER_UPDATE' });
+          renderHUD();
+        },
+        (err) => {
+          // If high accuracy watch times out indoors on iOS, fall back to standard accuracy watch
+          if (highAccuracy && (err.code === 2 || err.code === 3)) {
+            beginContinuousGpsWatch(false);
+          }
+        },
+        {
+          enableHighAccuracy: highAccuracy,
+          maximumAge: 3000,
+          timeout: highAccuracy ? 10000 : 20000
+        }
+      );
+    }
+
+    function enterLiveRideScreen() {
+      const nameVal = document.getElementById('inputCallsign').value.trim() || 'Rider 1';
+      const me = getMe();
+      me.name = nameVal;
+      me.color = state.selectedColor;
+      state.isBroadcasting = true;
+
+      try {
+        localStorage.setItem('motogo_v5_name', nameVal);
+        localStorage.setItem('motogo_v5_color', state.selectedColor);
+        window.history.replaceState(null, '', `?room=${encodeURIComponent(state.roomCode)}`);
+      } catch (e) {}
+
+      // Reset Launch button UI
+      document.getElementById('btnLaunchRideLabel').textContent = 'Start Broadcasting GPS';
+      document.getElementById('btnLaunchRideBadge').textContent = 'GO →';
+
+      // Hide Landing & Permission modals, show HUD
+      document.getElementById('gpsPermissionModal').classList.add('hidden');
+      document.getElementById('gpsPermissionModal').classList.remove('flex');
+      document.getElementById('landingOverlay').classList.add('hidden');
+
+      const hud = document.getElementById('hudOverlay');
+      hud.classList.remove('hidden');
+      hud.classList.add('flex');
+
+      setTimeout(() => {
+        map.invalidateSize();
+        drawVectorRoadCanvas();
+        map.setView([me.lat, me.lng], 16);
+      }, 50);
+
+      connectCloudRoom();
+      renderHUD();
+      showToast(`📡 GPS Locked! Broadcasting in ${state.roomCode}`);
+    }
+
+    function showGpsTroubleshooterModal(reasonText) {
+      document.getElementById('btnLaunchRideLabel').textContent = 'Start Broadcasting GPS';
+      document.getElementById('btnLaunchRideBadge').textContent = 'GO →';
+      if (reasonText) {
+        document.getElementById('gpsErrorReasonText').textContent = reasonText;
+      }
+      const m = document.getElementById('gpsPermissionModal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    }
+
+    // CRITICAL FOR iOS SAFARI: `navigator.geolocation.getCurrentPosition` MUST be invoked
+    // synchronously on the very first line of the click handler to preserve the iOS user-gesture token!
+    function forceLocationPromptAndLaunch() {
+      if (!('geolocation' in navigator)) {
+        showGpsTroubleshooterModal('Geolocation API is not supported in this browser');
+        return;
+      }
+
+      document.getElementById('btnLaunchRideLabel').textContent = 'Requesting iOS/Android GPS...';
+      document.getElementById('btnLaunchRideBadge').textContent = 'WAIT';
+
+      // Step 1: Immediate synchronous request inside user tap gesture
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          applyGpsCoordinates(pos);
+          enterLiveRideScreen();
+          beginContinuousGpsWatch(true);
+        },
+        (err) => {
+          // If High Accuracy timed out or position unavailable (common indoors on iOS), immediately retry with standard accuracy (Wi-Fi/Cell)
+          if (err.code === 2 || err.code === 3) {
+            document.getElementById('btnLaunchRideLabel').textContent = 'Locking Cell/Wi-Fi GPS...';
+            navigator.geolocation.getCurrentPosition(
+              (pos2) => {
+                applyGpsCoordinates(pos2);
+                enterLiveRideScreen();
+                beginContinuousGpsWatch(false);
+              },
+              (err2) => {
+                const msg = err2.code === 1
+                  ? 'Location permission denied (Error Code 1)'
+                  : 'Could not lock GPS signal (Check Location Services)';
+                showGpsTroubleshooterModal(msg);
+              },
+              { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
+            );
+          } else {
+            // err.code === 1 (PERMISSION_DENIED) — iOS blocked the prompt due to Settings
+            showGpsTroubleshooterModal('iOS / Browser blocked Location Permission (Error Code 1)');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      );
+    }
+
+    function fitAllPackRiders() {
+      const pts = state.riders.map(r => [r.lat, r.lng]);
+      if (state.activeSignal) pts.push([state.activeSignal.lat, state.activeSignal.lng]);
+      if (pts.length === 1) map.flyTo(pts[0], 15, { duration: 0.5 });
+      else if (pts.length > 1) map.fitBounds(pts, { padding: [65, 65], maxZoom: 16 });
+    }
+
+    let toastTimer = null;
+    function showToast(text) {
+      const banner = document.getElementById('toastBanner');
+      document.getElementById('toastText').textContent = text;
+      banner.classList.remove('opacity-0', '-translate-y-2');
+      banner.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        banner.classList.add('opacity-0', '-translate-y-2');
+        banner.classList.remove('opacity-100', 'translate-y-0');
+      }, 2600);
+    }
+
+    function copyToClipboard(str) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(str).catch(() => fallbackCopyText(str));
+      } else {
+        fallbackCopyText(str);
+      }
+    }
+    function fallbackCopyText(str) {
+      const ta = document.createElement('textarea');
+      ta.value = str;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    // 1. Launch Ride Button & GPS Troubleshooter Modal Buttons
+    document.getElementById('btnLaunchRide').addEventListener('click', forceLocationPromptAndLaunch);
+    document.getElementById('btnRetryGpsNow').addEventListener('click', forceLocationPromptAndLaunch);
+    document.getElementById('btnOpenGpsHelpLanding').addEventListener('click', () => {
+      showGpsTroubleshooterModal('How to enable Location on iPhone (iOS) & Android');
+    });
+    document.getElementById('btnCloseGpsModal').addEventListener('click', () => {
+      const m = document.getElementById('gpsPermissionModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    });
+    document.getElementById('btnContinueDemoFallback').addEventListener('click', () => {
+      enterLiveRideScreen();
+      showToast('Entered Demo Mode (drag your pin on map to test)');
+    });
+
+    // 2. Exit Room Button
+    document.getElementById('btnExitRideRoom').addEventListener('click', () => {
+      publishRoomState({ type: 'RIDER_EXIT', riderId: state.myId });
+      state.isBroadcasting = false;
+      if (state.gpsWatchId !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(state.gpsWatchId);
+        state.gpsWatchId = null;
+      }
+      if (state.mqttClient) {
+        try { state.mqttClient.end(true); } catch (e) {}
+        state.mqttClient = null;
+        state.mqttConnected = false;
+      }
+
+      state.riders = [getMe()];
+      state.activeSignal = null;
+      state.roomCode = generateRandomRoomCode();
+      document.getElementById('landingRoomId').textContent = state.roomCode;
+      document.getElementById('inviteDetectedCard').classList.add('hidden');
+      try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+
+      const hud = document.getElementById('hudOverlay');
+      hud.classList.add('hidden');
+      hud.classList.remove('flex');
+      document.getElementById('landingOverlay').classList.remove('hidden');
+      renderHUD();
+      showToast('Exited room & generated a new random Session ID');
+    });
+
+    document.getElementById('btnEditRiderProfile').addEventListener('click', () => {
+      document.getElementById('landingOverlay').classList.remove('hidden');
+    });
+
+    // 3. Signal Stop / Drop Pin Modal & Accept Logic
+    function broadcastStopSignal(msgText) {
+      const me = getMe();
+      state.activeSignal = {
+        id: 'sig-' + Date.now(),
+        senderId: me.id,
+        senderName: me.name,
+        message: msgText,
+        lat: me.lat,
+        lng: me.lng,
+        acceptedBy: [me.name]
+      };
+      const modal = document.getElementById('signalModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      playAlertChime();
+      publishRoomState({ type: 'STOP_SIGNAL' });
+      renderHUD();
+      fitAllPackRiders();
+      showToast('🛑 Stop marker dropped & sent to pack');
+    }
+
+    document.getElementById('btnOpenSignalModal').addEventListener('click', () => {
+      const m = document.getElementById('signalModal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    });
+    document.getElementById('btnCloseSignalModal').addEventListener('click', () => {
+      const m = document.getElementById('signalModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    });
+
+    document.querySelectorAll('.quick-signal-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        broadcastStopSignal(btn.getAttribute('data-msg'));
+      });
+    });
+
+    document.getElementById('btnSendCustomStopMsg').addEventListener('click', () => {
+      const inp = document.getElementById('inputCustomStopMsg');
+      const msg = inp.value.trim() || 'Pulling over here — wait up!';
+      inp.value = '';
+      broadcastStopSignal(msg);
+    });
+
+    document.getElementById('btnAcknowledgeSignal').addEventListener('click', () => {
+      if (!state.activeSignal) return;
+      const me = getMe();
+      if (!state.activeSignal.acceptedBy.includes(me.name)) {
+        state.activeSignal.acceptedBy.push(me.name);
+      }
+      publishRoomState({
+        type: 'SIGNAL_ACK',
+        signalId: state.activeSignal.id,
+        ackRiderName: me.name
+      });
+      renderHUD();
+      showToast('🏍️ Copy That! En route to stop pin.');
+    });
+
+    function centerOnActiveSignal() {
+      if (state.activeSignal) {
+        map.flyTo([state.activeSignal.lat, state.activeSignal.lng], 16, { duration: 0.5 });
+      }
+    }
+    function clearActiveSignal() {
+      state.activeSignal = null;
+      publishRoomState({ type: 'CLEAR_SIGNAL' });
+      renderHUD();
+      showToast('Cleared stop signal');
+    }
+
+    document.getElementById('btnCenterOnSignalPending').addEventListener('click', centerOnActiveSignal);
+    document.getElementById('btnCenterOnSignalConfirmed').addEventListener('click', centerOnActiveSignal);
+    document.getElementById('btnClearSignalPending').addEventListener('click', clearActiveSignal);
+    document.getElementById('btnClearSignalConfirmed').addEventListener('click', clearActiveSignal);
+
+    // 4. Pack & Invite Modal
+    function openPackDrawer() {
+      const baseUrl = window.location.href.split('?')[0].split('#')[0];
+      const shareUrl = `${baseUrl}?room=${encodeURIComponent(state.roomCode)}`;
+      document.getElementById('modalRoomIdText').textContent = state.roomCode;
+      document.getElementById('inputShareableUrl').value = shareUrl;
+
+      const me = getMe();
+      const waMsg = `Join my motoGo live ride radar (${me.name} • Room ${state.roomCode}):\n${shareUrl}`;
+      document.getElementById('btnWhatsAppForward').href = `https://wa.me/?text=${encodeURIComponent(waMsg)}`;
+
+      const m = document.getElementById('packModal');
+      m.classList.remove('hidden');
+      m.classList.add('flex');
+    }
+
+    document.getElementById('btnOpenShareSheet').addEventListener('click', openPackDrawer);
+    document.getElementById('btnOpenPackDrawer').addEventListener('click', openPackDrawer);
+    document.getElementById('btnClosePackModal').addEventListener('click', () => {
+      const m = document.getElementById('packModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+    });
+
+    document.getElementById('btnCopyRoomLink').addEventListener('click', () => {
+      copyToClipboard(document.getElementById('inputShareableUrl').value);
+      showToast('Copied Room Link to clipboard');
+    });
+
+    document.getElementById('btnAddSimFriend').addEventListener('click', () => {
+      const inp = document.getElementById('inputSimFriendName');
+      const name = inp.value.trim() || `Rider ${state.riders.length + 1}`;
+      const palette = ['#2563eb', '#059669', '#7c3aed', '#e11d48'];
+      const idx = state.riders.length - 1;
+      const me = getMe();
+
+      state.riders.push({
+        id: 'sim-' + Date.now(),
+        name,
+        color: palette[idx % palette.length],
+        isMe: false,
+        isSimFriend: true,
+        lat: me.lat + (Math.random() - 0.4) * 0.004,
+        lng: me.lng + (Math.random() - 0.4) * 0.004,
+        speedKmh: 45
+      });
+      inp.value = '';
+      const m = document.getElementById('packModal');
+      m.classList.add('hidden');
+      m.classList.remove('flex');
+      renderHUD();
+      fitAllPackRiders();
+      showToast(`${name} joined Room ${state.roomCode}`);
+    });
+
+    // 5. Map Floating Quick Buttons (Center Self also re-triggers live GPS lock!)
+    document.getElementById('btnCenterSelf').addEventListener('click', () => {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            applyGpsCoordinates(pos);
+            publishRoomState({ type: 'RIDER_UPDATE' });
+            renderHUD();
+            map.flyTo([pos.coords.latitude, pos.coords.longitude], 16, { duration: 0.5 });
+            showToast('📍 Synced & centered on your live GPS');
+          },
+          () => {
+            const me = getMe();
+            map.flyTo([me.lat, me.lng], 16, { duration: 0.5 });
+            showToast('Centered on your bike');
+          },
+          { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
+        );
+      } else {
+        const me = getMe();
+        map.flyTo([me.lat, me.lng], 16, { duration: 0.5 });
+      }
+    });
+    document.getElementById('btnFitPack').addEventListener('click', () => {
+      fitAllPackRiders();
+      showToast('Fitted all pack riders');
+    });
+    document.getElementById('btnToggleMapTiles').addEventListener('click', () => {
+      state.mapLayerIndex = (state.mapLayerIndex + 1) % MAP_STYLES.length;
+      const next = MAP_STYLES[state.mapLayerIndex];
+      map.removeLayer(activeTileLayer);
+      activeTileLayer = L.tileLayer(next.url, { maxZoom: 20 }).addTo(map);
+      showToast(`Map Style: ${next.name}`);
+    });
+
+    window.addEventListener('load', () => {
+      renderHUD();
+      [60, 250].forEach(ms => setTimeout(() => {
+        map.invalidateSize();
+        drawVectorRoadCanvas();
+      }, ms));
+    });
+  </script>
+</body>
+</html>
