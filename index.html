@@ -369,7 +369,7 @@
         <div id="roomAccessControl" class="space-y-2">
           <div class="flex items-center justify-between gap-2">
             <label class="text-[11px] font-mono-tech font-bold uppercase tracking-wider text-sec">Room access</label>
-            <span class="text-[10px] text-mut">OWNER SETTINGS</span>
+            <span class="text-[10px] text-mut">ROOM ACCESS</span>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <label class="p-3 rounded-2xl surface-subtle flex items-start gap-2 cursor-pointer">
@@ -395,16 +395,11 @@
           <button id="btnOpenGpsHelpLanding" type="button" class="underline font-bold" style="color: var(--accent);">iOS GPS Help?</button>
         </div>
         <div class="pt-1 border-t" style="border-color:var(--border-strong)">
-          <div class="flex items-center justify-between gap-3 pt-3">
-            <div class="min-w-0"><p class="text-xs font-display font-bold">Install MotoGo</p><p class="text-[10px] text-mut leading-relaxed">Add it to your home screen for quick access. Background GPS still depends on your phone and browser.</p></div>
-            <button id="btnInstallApp" type="button" class="hidden shrink-0 px-3 py-2 rounded-xl text-white text-xs font-display font-bold" style="background:var(--accent)">Install</button>
-          </div>
           <div class="flex items-center justify-between gap-3 mt-3">
             <p class="text-[10px] text-mut leading-relaxed">Get a sound, vibration, and an on-screen browser alert when riders join or send a stop signal.</p>
             <button id="btnEnableAlerts" type="button" class="shrink-0 px-3 py-2 rounded-xl surface-card text-xs font-display font-bold">Enable alerts</button>
           </div>
           <p id="alertsPermissionStatus" class="text-[10px] text-mut mt-1" role="status">On-screen notifications require permission. Background push needs a configured push service.</p>
-          <p class="text-[10px] text-mut mt-2">Chrome: use the Install option in the browser menu. iPhone: Safari → Share → Add to Home Screen.</p>
         </div>
       </div>
     </div>
@@ -851,11 +846,25 @@
     const queryParams = new URLSearchParams(window.location.search || window.location.hash.replace(/^#/, '?'));
     const roomFromLink = sanitizeRoomCode(queryParams.get('room'));
 
+    function getStableRiderId() {
+      const key = 'motogo_v6_rider_id';
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved && /^rider-[a-z0-9-]{8,70}$/i.test(saved)) return saved;
+        const randomPart = (window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36);
+        const id = 'rider-' + randomPart.slice(0, 24);
+        localStorage.setItem(key, id);
+        return id;
+      } catch (e) {
+        return 'rider-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      }
+    }
+
     const state = {
       theme: 'light',
       roomCode: roomFromLink || generateRandomRoomCode(),
       isRoomOwner: !roomFromLink || readStoredOwnerRoomCode() === roomFromLink,
-      roomAccessMode: 'closed',
+      roomAccessMode: queryParams.get('mode') === 'closed' ? 'closed' : 'open',
       joinRequests: [],
       approvedRiderIds: [],
       joinRequestId: null,
@@ -864,7 +873,7 @@
       pendingGpsHighAccuracy: true,
       isDemoMode: false,
       lastSeenByRider: {},
-      myId: 'rider-' + Math.random().toString(36).substring(2, 9),
+      myId: getStableRiderId(),
       selectedColor: '#ff3b00',
       mqttClient: null,
       mqttConnected: false,
@@ -919,7 +928,7 @@
       document.getElementById('roomAccessClosed').checked = state.roomAccessMode !== 'open';
       document.getElementById('roomAccessDescription').textContent = state.roomAccessMode === 'open'
         ? 'Open room: riders with the ID are accepted automatically. Share the ID only with people you trust.'
-        : 'Closed by default. Review each join request before sharing your pack.';
+        : 'Closed rooms require approval. Open rooms let riders join and reconnect without an owner.';
     }
 
     function renderLandingColors() {
@@ -992,7 +1001,7 @@
     document.getElementById('btnNewRandomRoom').addEventListener('click', () => {
       state.roomCode = generateRandomRoomCode();
       state.isRoomOwner = true;
-      state.roomAccessMode = 'closed';
+      state.roomAccessMode = 'open';
       try {
         localStorage.setItem('motogo_v5_owner_room', state.roomCode);
         localStorage.setItem('motogo_v5_room_access_' + state.roomCode, state.roomAccessMode);
@@ -1204,7 +1213,12 @@
           client.subscribe(topic, { qos: 0 });
           if (state.isBroadcasting) {
             publishRoomState({ type: 'RIDER_UPDATE' });
-            if (state.isRoomOwner) publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+            if (state.roomAccessMode === 'open') {
+              state.approvedRiderIds = [...new Set([...state.approvedRiderIds, state.myId])];
+              publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+            } else if (state.isRoomOwner) {
+              publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+            }
           }
           if (state.joinRequestPending) publishJoinRequest();
         });
@@ -1236,6 +1250,7 @@
       const me = getMe();
       const packet = {
         roomCode: state.roomCode,
+        roomAccessMode: state.roomAccessMode,
         rider: {
           id: me.id,
           name: me.name,
@@ -1311,15 +1326,16 @@
       if (!data || typeof data !== 'object' || Array.isArray(data) ||
           typeof data.roomCode !== 'string' || data.roomCode !== state.roomCode) return;
       if (data.type === 'JOIN_REQUEST') {
-        if (!state.isRoomOwner || !state.isBroadcasting || typeof data.requestId !== 'string' ||
+        if (!state.isBroadcasting || typeof data.requestId !== 'string' ||
             data.requestId.length > 100 || !isValidRiderPayload(data.rider, false) || data.rider.id === state.myId) return;
         if (state.roomAccessMode === 'open') {
           if (!state.approvedRiderIds.includes(data.rider.id)) state.approvedRiderIds.push(data.rider.id);
           publishRoomState({ type: 'JOIN_DECISION', requestId: data.requestId, targetId: data.rider.id, accepted: true });
-          publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+          publishRoomState({ type: 'ROOM_ROSTER', riderIds: [...new Set([...state.approvedRiderIds, state.myId])] });
           showToast(`${data.rider.name.trim().slice(0, 40)} joined the open room`);
           return;
         }
+        if (!state.isRoomOwner) return;
         if (!state.joinRequests.some(req => req.requestId === data.requestId)) {
           state.joinRequests.push({ requestId: data.requestId, rider: {
             id: data.rider.id, name: data.rider.name.trim().slice(0, 40), color: data.rider.color
@@ -1348,10 +1364,13 @@
       }
       if (data.type === 'ROOM_ROSTER') {
         if (!Array.isArray(data.riderIds) || data.riderIds.length > 100) return;
-        state.approvedRiderIds = [...new Set(data.riderIds.filter(id => typeof id === 'string' && id.length >= 3 && id.length <= 80))];
+        const incomingIds = [...new Set(data.riderIds.filter(id => typeof id === 'string' && id.length >= 3 && id.length <= 80))];
+        state.approvedRiderIds = state.roomAccessMode === 'open'
+          ? [...new Set([...state.approvedRiderIds, ...incomingIds, state.myId])]
+          : incomingIds;
       }
       if (data.type === 'RIDER_EXIT' && typeof data.riderId === 'string') {
-        if (!state.approvedRiderIds.includes(data.riderId)) return;
+        if (data.riderId === state.myId) return;
         if (markerRefs[data.riderId]) { riderLayerGroup.removeLayer(markerRefs[data.riderId]); delete markerRefs[data.riderId]; }
         state.riders = state.riders.filter(r => r.id !== data.riderId || r.isMe);
         delete state.lastSeenByRider[data.riderId];
@@ -1360,10 +1379,28 @@
       }
       if (data.rider && data.rider.id !== state.myId) {
         const inc = data.rider;
-        if (!isValidRiderPayload(inc, true) || !state.approvedRiderIds.includes(inc.id)) return;
+        if (!isValidRiderPayload(inc, true)) return;
+        if (state.roomAccessMode === 'open') {
+          if (!state.approvedRiderIds.includes(inc.id)) {
+            state.approvedRiderIds.push(inc.id);
+            publishRoomState({ type: 'ROOM_ROSTER', riderIds: [...new Set([...state.approvedRiderIds, state.myId])] });
+          }
+        } else if (!state.approvedRiderIds.includes(inc.id)) return;
         state.lastSeenByRider[inc.id] = Date.now();
         const safeRider = { id: inc.id, name: inc.name.trim().slice(0, 40), color: inc.color,
           lat: inc.lat, lng: inc.lng, speedKmh: inc.speedKmh, isMe: false };
+        const callsign = safeRider.name.trim().toLocaleLowerCase();
+        // Re-check on every update: an old session can become stale after the first
+        // reconnect packet, so cleanup must not be limited to the initial upsert.
+        const staleDuplicates = state.riders.filter(r => !r.isMe && r.id !== safeRider.id &&
+          r.name.trim().toLocaleLowerCase() === callsign && r.color === safeRider.color &&
+          (!state.lastSeenByRider[r.id] || Date.now() - state.lastSeenByRider[r.id] > 10000));
+        staleDuplicates.forEach(r => {
+          if (markerRefs[r.id]) { riderLayerGroup.removeLayer(markerRefs[r.id]); delete markerRefs[r.id]; }
+          delete state.lastSeenByRider[r.id];
+          state.approvedRiderIds = state.approvedRiderIds.filter(id => id !== r.id);
+          state.riders = state.riders.filter(item => item.id !== r.id);
+        });
         const found = state.riders.find(r => r.id === safeRider.id);
         if (!found) {
           state.riders.push(safeRider);
@@ -1788,7 +1825,7 @@
       try {
         localStorage.setItem('motogo_v5_name', nameVal);
         localStorage.setItem('motogo_v5_color', state.selectedColor);
-        window.history.replaceState(null, '', `?room=${encodeURIComponent(state.roomCode)}`);
+        window.history.replaceState(null, '', `?room=${encodeURIComponent(state.roomCode)}&mode=${encodeURIComponent(state.roomAccessMode)}`);
       } catch (e) {}
 
       // Reset Launch button UI
@@ -1851,8 +1888,13 @@
       connectCloudRoom(); showToast('Requesting approval from the ride owner');
     }
     function continueAfterGpsLock(highAccuracy) {
-      if (state.isRoomOwner) { enterLiveRideScreen(false); beginContinuousGpsWatch(highAccuracy); }
-      else requestRoomEntry(highAccuracy);
+      if (state.isRoomOwner || state.roomAccessMode === 'open') {
+        state.joinRequestPending = false;
+        state.joinRequestId = null;
+        state.approvedRiderIds = [...new Set([...state.approvedRiderIds, state.myId])];
+        enterLiveRideScreen(false);
+        beginContinuousGpsWatch(highAccuracy);
+      } else requestRoomEntry(highAccuracy);
     }
 
     function forceLocationPromptAndLaunch() {
@@ -1870,6 +1912,7 @@
       const wasOwnerOfCurrentRoom = state.isRoomOwner && typedRoom === state.roomCode;
       state.isRoomOwner = wasOwnerOfCurrentRoom || typedRoom === readStoredOwnerRoomCode();
       state.roomCode = typedRoom;
+      state.roomAccessMode = roomFromLink === typedRoom && queryParams.get('mode') === 'closed' ? 'closed' : 'open';
       if (state.isRoomOwner) {
         try {
           const savedAccess = localStorage.getItem('motogo_v5_room_access_' + state.roomCode);
@@ -1993,10 +2036,14 @@
       state.activeSignal = null;
       state.isDemoMode = false; state.joinRequestPending = false; state.joinRequestId = null;
       state.joinRequests = []; state.approvedRiderIds = [state.myId]; state.lastSeenByRider = {};
-      state.roomCode = generateRandomRoomCode(); state.isRoomOwner = true;
-      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
+      state.roomCode = generateRandomRoomCode(); state.isRoomOwner = true; state.roomAccessMode = 'open';
+      try {
+        localStorage.setItem('motogo_v5_owner_room', state.roomCode);
+        localStorage.setItem('motogo_v5_room_access_' + state.roomCode, 'open');
+      } catch (e) {}
       document.getElementById('demoModeBanner').classList.add('hidden');
       document.getElementById('landingRoomId').value = state.roomCode;
+      renderRoomAccessControls();
       document.getElementById('inviteDetectedCard').classList.add('hidden');
       try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
 
@@ -2144,7 +2191,7 @@
     // 4. Pack & Invite Modal
     function openPackDrawer() {
       const baseUrl = window.location.href.split('?')[0].split('#')[0];
-      const shareUrl = `${baseUrl}?room=${encodeURIComponent(state.roomCode)}`;
+      const shareUrl = `${baseUrl}?room=${encodeURIComponent(state.roomCode)}&mode=${encodeURIComponent(state.roomAccessMode)}`;
       document.getElementById('modalRoomIdText').textContent = state.roomCode;
       document.getElementById('inputShareableUrl').value = shareUrl;
 
@@ -2250,32 +2297,8 @@
     });
     // Progressive Web App installation support. This improves installability,
     // but does not grant the browser unrestricted background location access.
-    let deferredInstallPrompt = null;
-    const installButton = document.getElementById('btnInstallApp');
-    window.addEventListener('beforeinstallprompt', (event) => {
-      event.preventDefault();
-      deferredInstallPrompt = event;
-      if (installButton) installButton.classList.remove('hidden');
-    });
-    if (installButton) {
-      installButton.addEventListener('click', async () => {
-        if (!deferredInstallPrompt) {
-          showToast('Use your browser menu to install MotoGo or add it to your home screen.');
-          return;
-        }
-        deferredInstallPrompt.prompt();
-        try {
-          const choice = await deferredInstallPrompt.userChoice;
-          if (choice && choice.outcome === 'accepted') showToast('MotoGo installation accepted');
-        } catch (e) {}
-        deferredInstallPrompt = null;
-        installButton.classList.add('hidden');
-      });
-    }
-    window.addEventListener('appinstalled', () => {
-      if (installButton) installButton.classList.add('hidden');
-      showToast('MotoGo installed');
-    });
+    // Keep the manifest and service worker active. Installation remains available
+    // through the browser's native menu/share sheet without a custom install prompt.
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./service-worker.js', { scope: './' }).catch(() => {});
