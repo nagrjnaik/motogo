@@ -369,7 +369,7 @@
         <div id="roomAccessControl" class="space-y-2">
           <div class="flex items-center justify-between gap-2">
             <label class="text-[11px] font-mono-tech font-bold uppercase tracking-wider text-sec">Room access</label>
-            <span class="text-[10px] text-mut">OWNER SETTINGS</span>
+            <span class="text-[10px] text-mut">ROOM ACCESS</span>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <label class="p-3 rounded-2xl surface-subtle flex items-start gap-2 cursor-pointer">
@@ -928,7 +928,7 @@
       document.getElementById('roomAccessClosed').checked = state.roomAccessMode !== 'open';
       document.getElementById('roomAccessDescription').textContent = state.roomAccessMode === 'open'
         ? 'Open room: riders with the ID are accepted automatically. Share the ID only with people you trust.'
-        : 'Closed by default. Review each join request before sharing your pack.';
+        : 'Closed rooms require approval. Open rooms let riders join and reconnect without an owner.';
     }
 
     function renderLandingColors() {
@@ -1326,7 +1326,7 @@
       if (!data || typeof data !== 'object' || Array.isArray(data) ||
           typeof data.roomCode !== 'string' || data.roomCode !== state.roomCode) return;
       if (data.type === 'JOIN_REQUEST') {
-        if (!state.isRoomOwner || !state.isBroadcasting || typeof data.requestId !== 'string' ||
+        if (!state.isBroadcasting || typeof data.requestId !== 'string' ||
             data.requestId.length > 100 || !isValidRiderPayload(data.rider, false) || data.rider.id === state.myId) return;
         if (state.roomAccessMode === 'open') {
           if (!state.approvedRiderIds.includes(data.rider.id)) state.approvedRiderIds.push(data.rider.id);
@@ -1335,6 +1335,7 @@
           showToast(`${data.rider.name.trim().slice(0, 40)} joined the open room`);
           return;
         }
+        if (!state.isRoomOwner) return;
         if (!state.joinRequests.some(req => req.requestId === data.requestId)) {
           state.joinRequests.push({ requestId: data.requestId, rider: {
             id: data.rider.id, name: data.rider.name.trim().slice(0, 40), color: data.rider.color
@@ -1388,20 +1389,19 @@
         state.lastSeenByRider[inc.id] = Date.now();
         const safeRider = { id: inc.id, name: inc.name.trim().slice(0, 40), color: inc.color,
           lat: inc.lat, lng: inc.lng, speedKmh: inc.speedKmh, isMe: false };
-        let found = state.riders.find(r => r.id === safeRider.id);
-        if (!found) {
-          const callsign = safeRider.name.trim().toLocaleLowerCase();
-          const staleDuplicates = state.riders.filter(r => !r.isMe && r.id !== safeRider.id &&
-            r.name.trim().toLocaleLowerCase() === callsign &&
-            (!state.lastSeenByRider[r.id] || Date.now() - state.lastSeenByRider[r.id] > 10000));
-          staleDuplicates.forEach(r => {
-            if (markerRefs[r.id]) { riderLayerGroup.removeLayer(markerRefs[r.id]); delete markerRefs[r.id]; }
-            delete state.lastSeenByRider[r.id];
-            state.approvedRiderIds = state.approvedRiderIds.filter(id => id !== r.id);
-            state.riders = state.riders.filter(item => item.id !== r.id);
-          });
-          found = state.riders.find(r => r.id === safeRider.id);
-        }
+        const callsign = safeRider.name.trim().toLocaleLowerCase();
+        // Re-check on every update: an old session can become stale after the first
+        // reconnect packet, so cleanup must not be limited to the initial upsert.
+        const staleDuplicates = state.riders.filter(r => !r.isMe && r.id !== safeRider.id &&
+          r.name.trim().toLocaleLowerCase() === callsign && r.color === safeRider.color &&
+          (!state.lastSeenByRider[r.id] || Date.now() - state.lastSeenByRider[r.id] > 10000));
+        staleDuplicates.forEach(r => {
+          if (markerRefs[r.id]) { riderLayerGroup.removeLayer(markerRefs[r.id]); delete markerRefs[r.id]; }
+          delete state.lastSeenByRider[r.id];
+          state.approvedRiderIds = state.approvedRiderIds.filter(id => id !== r.id);
+          state.riders = state.riders.filter(item => item.id !== r.id);
+        });
+        const found = state.riders.find(r => r.id === safeRider.id);
         if (!found) {
           state.riders.push(safeRider);
           showToast(`${safeRider.name} joined Room ${state.roomCode}`);
