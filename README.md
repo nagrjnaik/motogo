@@ -10,6 +10,9 @@ The app remains static and GitHub Pages compatible: `index.html` contains the UI
 - **Room-based sessions** — each ride has a Session ID like `MG-49X2`. Owners can choose **Open** (automatically accept anyone with the ID) or **Closed** (approve each join request).
 - **Stop signals** — broadcast "Stopping ahead — pull over!" (or a custom message) to the pack; riders can acknowledge and navigate to the pin.
 - **Rider alerts** — join and stop-signal chimes, vibration where supported, and optional browser notifications while the page is still running.
+
+- **Room recovery** — open rooms are ownerless for membership and roster recovery; rider IDs persist across reconnects, and stale same-callsign records are replaced on rejoin. Open rooms are available whenever at least one participant is connected; the static app does not persist rooms while everyone is offline.
+- **PWA installation** — the app remains installable from the browser menu/share sheet; the landing-page install promotion has been removed.
 - **Pack spread indicator** — max distance between riders at a glance.
 - **Rider profiles** — callsign and livery colour, remembered between rides.
 - **Daylight / Night mode**, mobile-first layout, WhatsApp invite sharing, and an installable PWA experience.
