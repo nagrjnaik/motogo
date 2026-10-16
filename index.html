@@ -198,6 +198,27 @@
 
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    button, a { touch-action: manipulation; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    input, textarea, select { color: var(--text-primary); }
+    input::placeholder { color: var(--text-muted); opacity: 1; }
+    body.dark-mode .leaflet-popup-content-wrapper { background: #171a21 !important; color: #f4f4f5 !important; border-color: #e4e4e7; }
+    body.dark-mode .leaflet-popup-tip { background: #171a21 !important; }
+    body.dark-mode .leaflet-popup-content { color: #f4f4f5 !important; }
+    body.dark-mode .leaflet-container a.gmaps-popup-btn { background: #f4f4f5 !important; color: #09090b !important; }
+    #hudOverlay { padding-left: max(0.75rem, env(safe-area-inset-left)); padding-right: max(0.75rem, env(safe-area-inset-right)); }
+    #packModal { padding-bottom: max(0px, env(safe-area-inset-bottom)); }
+    #packModal .pack-sheet { padding-bottom: max(1rem, env(safe-area-inset-bottom)); overscroll-behavior: contain; transition: max-height 180ms ease; }
+    #packModal.pack-collapsed .pack-sheet { max-height: 170px; }
+    #packModal.pack-collapsed .pack-sheet > :not(#btnTogglePackSheet):not(.pack-sheet-header) { display: none !important; }
+    #bottomRidersStrip { display: none !important; }
+    #packModal .pack-sheet-handle { width: 38px; height: 4px; border-radius: 999px; background: var(--text-muted); opacity: 0.55; margin: 0 auto 0.25rem; }
+    .rider-status-badge { font-size: 9px; line-height: 1.3; font-weight: 800; letter-spacing: 0.04em; border-radius: 999px; padding: 2px 6px; white-space: nowrap; }
+    .rider-status-live { background: #dcfce7; color: #166534; }
+    .rider-status-stale { background: #fef3c7; color: #92400e; }
+    body.dark-mode .rider-status-live { background: #14532d; color: #bbf7d0; }
+    body.dark-mode .rider-status-stale { background: #78350f; color: #fde68a; }
+    @media (max-width: 420px) { #hudOverlay { padding-left: 0.5rem; padding-right: 0.5rem; } #btnOpenShareSheet, #btnExitRideRoom { padding-left: 0.55rem; padding-right: 0.55rem; } #btnOpenSignalModal, #btnOpenPackDrawer { min-height: 48px; padding-left: 0.65rem; padding-right: 0.65rem; } }
   </style>
 </head>
 <body class="w-full h-full overflow-hidden select-none">
@@ -659,11 +680,17 @@
         </button>
       </div>
 
-      <div class="flex gap-2 pt-1">
-        <input id="inputCustomStopMsg" type="text" placeholder="Custom signal message..." class="flex-1 px-3.5 py-3 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
-        <button id="btnSendCustomStopMsg" type="button" class="px-4 py-3 rounded-xl text-white font-display font-bold text-xs shrink-0" style="background: var(--accent);">
-          Send Signal
-        </button>
+      <div class="pt-1 space-y-1.5">
+        <div class="flex gap-2">
+          <input id="inputCustomStopMsg" type="text" maxlength="180" aria-describedby="customStopMsgFeedback" placeholder="Custom signal message..." class="flex-1 min-w-0 px-3.5 py-3 rounded-xl surface-subtle text-xs font-bold focus:outline-none focus:ring-2 focus:ring-orange-500" />
+          <button id="btnSendCustomStopMsg" type="button" class="px-4 py-3 rounded-xl text-white font-display font-bold text-xs shrink-0" style="background: var(--accent);">
+            Send Signal
+          </button>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-[10px]">
+          <span id="customStopMsgFeedback" role="status" aria-live="polite" class="text-mut">Maximum 180 characters.</span>
+          <span id="customStopMsgCount" class="font-mono-tech text-mut tabular-nums">0/180</span>
+        </div>
       </div>
     </div>
   </div>
@@ -672,10 +699,11 @@
   <!-- MODAL 2: WHATSAPP INVITE & PACK DISTANCES SHEET                       -->
   <!-- ===================================================================== -->
   <div id="packModal" class="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] flex flex-col p-5 space-y-4">
-      <div class="flex items-center justify-between shrink-0">
+    <div class="pack-sheet surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] flex flex-col p-4 sm:p-5 space-y-3">
+      <button id="btnTogglePackSheet" type="button" class="w-full py-1" aria-expanded="true" title="Collapse or expand pack sheet"><span class="pack-sheet-handle block"></span><span id="packSheetToggleLabel" class="text-[10px] font-semibold text-sec">Tap to collapse</span></button>
+      <div class="pack-sheet-header flex items-center justify-between shrink-0">
         <div>
-          <h3 class="font-display font-bold text-lg">Pack Radar & Invite Link</h3>
+          <h3 class="font-display font-bold text-lg">Your Pack</h3>
           <p class="text-xs font-mono-tech text-sec">ROOM ID: <strong id="modalRoomIdText" style="color: var(--accent);"></strong></p>
         </div>
         <button id="btnClosePackModal" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm">✕</button>
@@ -1341,11 +1369,16 @@
         }
       }
 
+      const now = Date.now();
       const enriched = state.riders.map(r => {
         const distKm = r.isMe ? 0 : haversineKm(me.lat, me.lng, r.lat, r.lng);
         const bearing = r.isMe ? 0 : computeBearing(me.lat, me.lng, r.lat, r.lng);
         const cardinal = bearingToCardinal(bearing);
-        return { ...r, distKm, bearing, cardinal };
+        const lastUpdateAt = r.isMe || r.isSimFriend ? now : (state.lastSeenByRider[r.id] || 0);
+        const updateAgeMs = lastUpdateAt ? Math.max(0, now - lastUpdateAt) : Infinity;
+        const isStale = !r.isMe && !r.isSimFriend && updateAgeMs > 10000;
+        const lastUpdateLabel = !lastUpdateAt ? 'No GPS update received' : updateAgeMs < 1000 ? 'Updated just now' : 'Updated ' + Math.floor(updateAgeMs / 1000) + 's ago';
+        return { ...r, distKm, bearing, cardinal, lastUpdateAt, updateAgeMs, isStale, lastUpdateLabel };
       });
 
       // Top Bar Telemetry
@@ -1368,6 +1401,7 @@
               <span style="width:8px; height:8px; border-radius:9999px; background:${r.color}; border:1px solid #ffffff; display:inline-block;"></span>
               <span style="color:#ffffff; font-size:11px; font-weight:800;">${escapeHtml(r.name)}</span>
               <span style="background:#ffffff; color:#09090b; font-size:10px; font-weight:800; padding:1px 6px; border-radius:9999px;" class="font-mono-tech">${distTag}</span>
+              ${r.isMe ? '' : '<span title="' + escapeHtml(r.lastUpdateLabel) + '" style="background:' + (r.isStale ? '#fbbf24' : '#86efac') + '; color:#09090b; font-size:9px; font-weight:900; padding:1px 5px; border-radius:9999px;">' + (r.isStale ? 'STALE' : 'LIVE') + '</span>'}
             </div>
             <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xl border-2 border-white" style="background:${r.color}; color:#ffffff;">
               ${DEFAULT_BIKE_SVG}
@@ -1528,10 +1562,11 @@
                 ${DEFAULT_BIKE_SVG}
               </div>
               <div class="min-w-0">
-                <div class="font-bold text-sm truncate">${r.name} ${r.isMe ? '(You)' : ''}</div>
+                <div class="font-bold text-sm truncate">${escapeHtml(r.name)} ${r.isMe ? '(You)' : ''}</div>
                 <div class="font-mono-tech text-[11px] text-sec">
                   ${r.isMe ? 'Broadcasting live GPS' : `${formatDistance(r.distKm)} away • Bearing ${r.cardinal}`}
                 </div>
+                ${r.isMe ? '' : '<div class="mt-1 flex flex-wrap items-center gap-1.5"><span class="rider-status-badge ' + (r.isStale ? 'rider-status-stale' : 'rider-status-live') + '">' + (r.isStale ? 'GPS STALE' : 'GPS LIVE') + '</span><span class="text-[10px] text-sec">' + escapeHtml(r.lastUpdateLabel) + (r.isStale ? ' · may be disconnected' : '') + '</span></div>'}
               </div>
             </div>
             ${r.isMe ? `<span class="font-mono-tech text-[11px] font-bold px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">LIVE</span>` : `
@@ -1813,13 +1848,49 @@
     });
 
     // 3. Signal Stop / Drop Pin Modal & Accept Logic
+    const MAX_STOP_MESSAGE_LENGTH = 180;
+    const customStopMessageInput = document.getElementById('inputCustomStopMsg');
+    const customStopMessageFeedback = document.getElementById('customStopMsgFeedback');
+    const customStopMessageCount = document.getElementById('customStopMsgCount');
+
+    function updateCustomStopMessageFeedback(message = 'Maximum 180 characters.', isError = false) {
+      customStopMessageFeedback.textContent = message;
+      customStopMessageFeedback.classList.toggle('text-rose-600', isError);
+      customStopMessageFeedback.classList.toggle('text-mut', !isError);
+      customStopMessageCount.textContent = `${customStopMessageInput.value.length}/${MAX_STOP_MESSAGE_LENGTH}`;
+      customStopMessageCount.classList.toggle('text-rose-600', isError);
+    }
+    customStopMessageInput.addEventListener('input', () => {
+      if (customStopMessageInput.value.length > MAX_STOP_MESSAGE_LENGTH) {
+        customStopMessageInput.value = customStopMessageInput.value.slice(0, MAX_STOP_MESSAGE_LENGTH);
+      }
+      updateCustomStopMessageFeedback();
+    });
+
     function broadcastStopSignal(msgText) {
+      if (typeof msgText !== 'string') {
+        showToast('Enter a valid stop message');
+        return false;
+      }
+      const message = msgText.trim();
+      if (!message) {
+        showToast('Stop message cannot be empty');
+        updateCustomStopMessageFeedback('Enter a message before sending.', true);
+        customStopMessageInput.focus();
+        return false;
+      }
+      if (message.length > MAX_STOP_MESSAGE_LENGTH) {
+        showToast('Stop message is too long (max 180 characters)');
+        updateCustomStopMessageFeedback('Message is too long. Keep it within 180 characters.', true);
+        customStopMessageInput.focus();
+        return false;
+      }
       const me = getMe();
       state.activeSignal = {
         id: 'sig-' + Date.now(),
         senderId: me.id,
         senderName: me.name,
-        message: msgText,
+        message,
         lat: me.lat,
         lng: me.lng,
         acceptedBy: [me.name]
@@ -1832,6 +1903,7 @@
       renderHUD();
       fitAllPackRiders();
       showToast('🛑 Stop marker dropped & sent to pack');
+      return true;
     }
 
     document.getElementById('btnOpenSignalModal').addEventListener('click', () => {
@@ -1852,10 +1924,23 @@
     });
 
     document.getElementById('btnSendCustomStopMsg').addEventListener('click', () => {
-      const inp = document.getElementById('inputCustomStopMsg');
-      const msg = inp.value.trim() || 'Pulling over here — wait up!';
-      inp.value = '';
-      broadcastStopSignal(msg);
+      const msg = customStopMessageInput.value.trim();
+      if (!msg) {
+        updateCustomStopMessageFeedback('Enter a message before sending.', true);
+        showToast('Enter a custom stop message first');
+        customStopMessageInput.focus();
+        return;
+      }
+      if (msg.length > MAX_STOP_MESSAGE_LENGTH) {
+        updateCustomStopMessageFeedback('Message is too long. Keep it within 180 characters.', true);
+        showToast('Stop message is too long (max 180 characters)');
+        customStopMessageInput.focus();
+        return;
+      }
+      if (broadcastStopSignal(msg)) {
+        customStopMessageInput.value = '';
+        updateCustomStopMessageFeedback();
+      }
     });
 
     document.getElementById('btnAcknowledgeSignal').addEventListener('click', () => {
@@ -1903,9 +1988,19 @@
       document.getElementById('btnWhatsAppForward').href = `https://wa.me/?text=${encodeURIComponent(waMsg)}`;
 
       const m = document.getElementById('packModal');
+      m.classList.remove('pack-collapsed');
+      document.getElementById('btnTogglePackSheet').setAttribute('aria-expanded', 'true');
+      document.getElementById('packSheetToggleLabel').textContent = 'Tap to collapse';
       m.classList.remove('hidden');
       m.classList.add('flex');
     }
+
+    document.getElementById('btnTogglePackSheet').addEventListener('click', () => {
+      const m = document.getElementById('packModal');
+      const collapsed = m.classList.toggle('pack-collapsed');
+      document.getElementById('btnTogglePackSheet').setAttribute('aria-expanded', String(!collapsed));
+      document.getElementById('packSheetToggleLabel').textContent = collapsed ? 'Tap to expand' : 'Tap to collapse';
+    });
 
     document.getElementById('btnOpenShareSheet').addEventListener('click', openPackDrawer);
     document.getElementById('btnOpenPackDrawer').addEventListener('click', openPackDrawer);
