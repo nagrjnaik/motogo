@@ -1,0 +1,25 @@
+{
+  "id": "./",
+  "name": "MotoGo — Live Pack Telemetry",
+  "short_name": "MotoGo",
+  "description": "Live rider locations, distance markers, and stop signals for motorcycle group rides.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f4f0",
+  "theme_color": "#ff3b00",
+  "icons": [
+    {
+      "src": "./icons/motogo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/motogo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
