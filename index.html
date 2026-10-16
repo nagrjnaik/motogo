@@ -399,6 +399,11 @@
             <div class="min-w-0"><p class="text-xs font-display font-bold">Install MotoGo</p><p class="text-[10px] text-mut leading-relaxed">Add it to your home screen for quick access. Background GPS still depends on your phone and browser.</p></div>
             <button id="btnInstallApp" type="button" class="hidden shrink-0 px-3 py-2 rounded-xl text-white text-xs font-display font-bold" style="background:var(--accent)">Install</button>
           </div>
+          <div class="flex items-center justify-between gap-3 mt-3">
+            <p class="text-[10px] text-mut leading-relaxed">Get a sound, vibration, and an on-screen browser alert when riders join or send a stop signal.</p>
+            <button id="btnEnableAlerts" type="button" class="shrink-0 px-3 py-2 rounded-xl surface-card text-xs font-display font-bold">Enable alerts</button>
+          </div>
+          <p id="alertsPermissionStatus" class="text-[10px] text-mut mt-1" role="status">On-screen notifications require permission. Background push needs a configured push service.</p>
           <p class="text-[10px] text-mut mt-2">Chrome: use the Install option in the browser menu. iPhone: Safari → Share → Add to Home Screen.</p>
         </div>
       </div>
@@ -1360,8 +1365,12 @@
         const safeRider = { id: inc.id, name: inc.name.trim().slice(0, 40), color: inc.color,
           lat: inc.lat, lng: inc.lng, speedKmh: inc.speedKmh, isMe: false };
         const found = state.riders.find(r => r.id === safeRider.id);
-        if (!found) { state.riders.push(safeRider); showToast(`${safeRider.name} joined Room ${state.roomCode}`); fitAllPackRiders(); }
-        else Object.assign(found, safeRider, { isMe: false });
+        if (!found) {
+          state.riders.push(safeRider);
+          showToast(`${safeRider.name} joined Room ${state.roomCode}`);
+          triggerRiderAlert('join', 'Rider joined MotoGo', `${safeRider.name} joined your riding group.`);
+          fitAllPackRiders();
+        } else Object.assign(found, safeRider, { isMe: false });
       }
       if (data.type === 'STOP_SIGNAL' && data.activeSignal) {
         const sig = data.activeSignal;
@@ -1369,10 +1378,14 @@
             typeof sig.message !== 'string' || sig.message.length > 180 || typeof sig.senderName !== 'string' || sig.senderName.length > 40 ||
             !Number.isFinite(sig.lat) || sig.lat < -90 || sig.lat > 90 || !Number.isFinite(sig.lng) || sig.lng < -180 || sig.lng > 180 ||
             !Array.isArray(sig.acceptedBy)) return;
+        const isNewStopSignal = !state.activeSignal || state.activeSignal.id !== sig.id;
         state.activeSignal = { id: sig.id.slice(0, 100), senderId: sig.senderId, senderName: sig.senderName.slice(0, 40),
           message: sig.message.slice(0, 180), lat: sig.lat, lng: sig.lng,
           acceptedBy: sig.acceptedBy.filter(name => typeof name === 'string').map(name => name.slice(0, 40)).slice(0, 100) };
-        playAlertChime(); showToast(`Stop signal from ${state.activeSignal.senderName}`);
+        if (isNewStopSignal) {
+          triggerRiderAlert('stop', 'MotoGo stop signal', `${state.activeSignal.senderName}: ${state.activeSignal.message}`);
+          showToast(`STOP SIGNAL — ${state.activeSignal.senderName}: ${state.activeSignal.message}`);
+        }
       } else if (data.type === 'SIGNAL_ACK' && typeof data.signalId === 'string' &&
                  typeof data.ackRiderName === 'string' && state.approvedRiderIds.includes(data.ackRiderId)) {
         if (state.activeSignal && state.activeSignal.id === data.signalId && !state.activeSignal.acceptedBy.includes(data.ackRiderName)) {
@@ -1403,10 +1416,15 @@
     }, 3000);
 
     // =========================================================================
-    // SYNTHESIZED AUDIO ALERT FOR STOP SIGNALS
+    // RIDER / STOP ALERTS: synthesized chime, vibration, optional notification
     // =========================================================================
     let audioCtx = null;
-    function playAlertChime() {
+    const ALERTS_ENABLED_KEY = 'motogo_alerts_enabled';
+    function alertsEnabled() {
+      try { return localStorage.getItem(ALERTS_ENABLED_KEY) !== 'false'; } catch (e) { return true; }
+    }
+    function playAlertChime(kind = 'stop') {
+      if (!alertsEnabled()) return;
       try {
         const AudioClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioClass) return;
@@ -1418,13 +1436,65 @@
         osc.connect(gain);
         gain.connect(audioCtx.destination);
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(587.33, now);
-        osc.frequency.setValueAtTime(880, now + 0.12);
+        osc.frequency.setValueAtTime(kind === 'join' ? 740 : 587.33, now);
+        osc.frequency.setValueAtTime(kind === 'join' ? 988 : 880, now + 0.12);
         gain.gain.setValueAtTime(0.14, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
         osc.start(now);
-        osc.stop(now + 0.35);
+        osc.stop(now + 0.38);
       } catch (e) {}
+    }
+    function triggerRiderAlert(kind, title, body) {
+      if (!alertsEnabled()) return;
+      playAlertChime(kind);
+      try {
+        if (typeof navigator.vibrate === 'function') {
+          navigator.vibrate(kind === 'stop' ? [260, 90, 260] : [110, 60, 110]);
+        }
+      } catch (e) {}
+      // This can notify while the page is running in the background. It is NOT
+      // a substitute for Web Push: browsers may suspend this page entirely.
+      if (document.visibilityState === 'hidden' && 'Notification' in window &&
+          Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title, {
+            body,
+            icon: './icons/motogo-192.png',
+            badge: './icons/motogo-192.png',
+            tag: 'motogo-' + kind,
+            renotify: true,
+            data: { url: './' }
+          });
+        }).catch(() => {});
+      }
+    }
+    const enableAlertsButton = document.getElementById('btnEnableAlerts');
+    const alertsPermissionStatus = document.getElementById('alertsPermissionStatus');
+    if (enableAlertsButton) {
+      enableAlertsButton.addEventListener('click', async () => {
+        try {
+          if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+          else if (!audioCtx) {
+            const AudioClass = window.AudioContext || window.webkitAudioContext;
+            if (AudioClass) { audioCtx = new AudioClass(); await audioCtx.resume(); }
+          }
+        } catch (e) {}
+        if ('Notification' in window && Notification.permission === 'default') {
+          try { await Notification.requestPermission(); } catch (e) {}
+        }
+        try { localStorage.setItem(ALERTS_ENABLED_KEY, 'true'); } catch (e) {}
+        if (alertsPermissionStatus) {
+          alertsPermissionStatus.textContent = 'Sound and vibration enabled where supported. Browser notifications: ' +
+            (('Notification' in window) ? Notification.permission : 'not supported') +
+            '. Background push is not configured yet.';
+        }
+        playAlertChime('join');
+        try { if (navigator.vibrate) navigator.vibrate([80, 50, 80]); } catch (e) {}
+      });
+    }
+    if (alertsPermissionStatus && 'Notification' in window) {
+      alertsPermissionStatus.textContent = 'Browser notifications: ' + Notification.permission +
+        '. Sound/vibration depend on device and browser support.';
     }
 
     // =========================================================================

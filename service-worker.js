@@ -1,5 +1,5 @@
 /* MotoGo static PWA service worker. No background GPS is performed here. */
-const CACHE_NAME = 'motogo-shell-v1';
+const CACHE_NAME = 'motogo-shell-v2';
 
 self.addEventListener('install', (event) => {
   const scope = self.registration.scope;
@@ -64,4 +64,19 @@ self.addEventListener('fetch', (event) => {
       });
     })
   );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windows) {
+      if ('focus' in client) {
+        if ('navigate' in client && client.url !== targetUrl) await client.navigate(targetUrl);
+        return client.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+  })());
 });
