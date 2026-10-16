@@ -659,11 +659,17 @@
         </button>
       </div>
 
-      <div class="flex gap-2 pt-1">
-        <input id="inputCustomStopMsg" type="text" placeholder="Custom signal message..." class="flex-1 px-3.5 py-3 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
-        <button id="btnSendCustomStopMsg" type="button" class="px-4 py-3 rounded-xl text-white font-display font-bold text-xs shrink-0" style="background: var(--accent);">
-          Send Signal
-        </button>
+      <div class="pt-1 space-y-1.5">
+        <div class="flex gap-2">
+          <input id="inputCustomStopMsg" type="text" maxlength="180" aria-describedby="customStopMsgFeedback" placeholder="Custom signal message..." class="flex-1 min-w-0 px-3.5 py-3 rounded-xl surface-subtle text-xs font-bold focus:outline-none focus:ring-2 focus:ring-orange-500" />
+          <button id="btnSendCustomStopMsg" type="button" class="px-4 py-3 rounded-xl text-white font-display font-bold text-xs shrink-0" style="background: var(--accent);">
+            Send Signal
+          </button>
+        </div>
+        <div class="flex items-center justify-between gap-2 text-[10px]">
+          <span id="customStopMsgFeedback" role="status" aria-live="polite" class="text-mut">Maximum 180 characters.</span>
+          <span id="customStopMsgCount" class="font-mono-tech text-mut tabular-nums">0/180</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1813,13 +1819,49 @@
     });
 
     // 3. Signal Stop / Drop Pin Modal & Accept Logic
+    const MAX_STOP_MESSAGE_LENGTH = 180;
+    const customStopMessageInput = document.getElementById('inputCustomStopMsg');
+    const customStopMessageFeedback = document.getElementById('customStopMsgFeedback');
+    const customStopMessageCount = document.getElementById('customStopMsgCount');
+
+    function updateCustomStopMessageFeedback(message = 'Maximum 180 characters.', isError = false) {
+      customStopMessageFeedback.textContent = message;
+      customStopMessageFeedback.classList.toggle('text-rose-600', isError);
+      customStopMessageFeedback.classList.toggle('text-mut', !isError);
+      customStopMessageCount.textContent = `${customStopMessageInput.value.length}/${MAX_STOP_MESSAGE_LENGTH}`;
+      customStopMessageCount.classList.toggle('text-rose-600', isError);
+    }
+    customStopMessageInput.addEventListener('input', () => {
+      if (customStopMessageInput.value.length > MAX_STOP_MESSAGE_LENGTH) {
+        customStopMessageInput.value = customStopMessageInput.value.slice(0, MAX_STOP_MESSAGE_LENGTH);
+      }
+      updateCustomStopMessageFeedback();
+    });
+
     function broadcastStopSignal(msgText) {
+      if (typeof msgText !== 'string') {
+        showToast('Enter a valid stop message');
+        return false;
+      }
+      const message = msgText.trim();
+      if (!message) {
+        showToast('Stop message cannot be empty');
+        updateCustomStopMessageFeedback('Enter a message before sending.', true);
+        customStopMessageInput.focus();
+        return false;
+      }
+      if (message.length > MAX_STOP_MESSAGE_LENGTH) {
+        showToast('Stop message is too long (max 180 characters)');
+        updateCustomStopMessageFeedback('Message is too long. Keep it within 180 characters.', true);
+        customStopMessageInput.focus();
+        return false;
+      }
       const me = getMe();
       state.activeSignal = {
         id: 'sig-' + Date.now(),
         senderId: me.id,
         senderName: me.name,
-        message: msgText,
+        message,
         lat: me.lat,
         lng: me.lng,
         acceptedBy: [me.name]
@@ -1832,6 +1874,7 @@
       renderHUD();
       fitAllPackRiders();
       showToast('🛑 Stop marker dropped & sent to pack');
+      return true;
     }
 
     document.getElementById('btnOpenSignalModal').addEventListener('click', () => {
@@ -1852,10 +1895,23 @@
     });
 
     document.getElementById('btnSendCustomStopMsg').addEventListener('click', () => {
-      const inp = document.getElementById('inputCustomStopMsg');
-      const msg = inp.value.trim() || 'Pulling over here — wait up!';
-      inp.value = '';
-      broadcastStopSignal(msg);
+      const msg = customStopMessageInput.value.trim();
+      if (!msg) {
+        updateCustomStopMessageFeedback('Enter a message before sending.', true);
+        showToast('Enter a custom stop message first');
+        customStopMessageInput.focus();
+        return;
+      }
+      if (msg.length > MAX_STOP_MESSAGE_LENGTH) {
+        updateCustomStopMessageFeedback('Message is too long. Keep it within 180 characters.', true);
+        showToast('Stop message is too long (max 180 characters)');
+        customStopMessageInput.focus();
+        return;
+      }
+      if (broadcastStopSignal(msg)) {
+        customStopMessageInput.value = '';
+        updateCustomStopMessageFeedback();
+      }
     });
 
     document.getElementById('btnAcknowledgeSignal').addEventListener('click', () => {
