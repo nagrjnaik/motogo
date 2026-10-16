@@ -610,11 +610,11 @@
       <!-- Quirky Vibe-Coded Credit Box -->
       <div class="p-4 rounded-2xl border-2 border-dashed space-y-3" style="border-color: var(--accent); background: rgba(255, 59, 0, 0.06);">
         <div class="flex items-center justify-between">
-          <span class="text-[10px] font-mono-tech font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-orange-500/20" style="color: var(--accent);">⚡ Vibe Coded</span>
+          <span class="text-[10px] font-mono-tech font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-orange-500/20" style="color: var(--accent);">Developed by</span>
           <span class="text-[11px] font-mono-tech font-bold text-sec">100% Throttle • ₹0 Cloud</span>
         </div>
         <p class="text-xs font-medium leading-relaxed">
-          Unapologetically <strong>vibe coded by Nagraj Naik</strong> fueled by filter coffee, late-night prompts, and the collective trauma of spending two hours hunting for lost friends who took the wrong highway exit.
+          Developed by <strong>Nagraj Naik</strong>, fueled by filter coffee and the collective trauma of spending two hours hunting for lost friends who took the wrong highway exit.
         </p>
         <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-white dark:text-zinc-950 font-display font-bold text-xs flex items-center justify-center gap-2 shadow transition">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -706,12 +706,32 @@
       <div class="border-t pt-3 space-y-2 shrink-0" style="border-color: var(--border-strong);">
         <div class="text-[10px] font-mono-tech font-bold uppercase tracking-wider text-mut">Demo / Test a Friend Joining Room</div>
         <div class="flex gap-2">
-          <input id="inputSimFriendName" type="text" placeholder="Friend's Name (e.g. Granthali)" class="flex-1 px-3 py-2 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
+          <input id="inputSimFriendName" type="text" placeholder="Friend's Name (e.g. Naveen)" class="flex-1 px-3 py-2 rounded-xl surface-subtle text-xs font-bold focus:outline-none" />
           <button id="btnAddSimFriend" type="button" class="px-3.5 py-2 rounded-xl font-display font-bold text-xs text-white shrink-0" style="background: var(--accent);">
             + Add Rider
           </button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="demoModeBanner" class="hidden fixed top-3 left-1/2 -translate-x-1/2 z-[60] rounded-full bg-amber-500 px-4 py-2 text-[11px] font-extrabold tracking-wide text-black shadow-lg">DEMO MODE — NOT LIVE GPS</div>
+
+  <div id="joinRequestsModal" class="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full max-h-[85dvh] overflow-y-auto p-5 space-y-4">
+      <div class="flex items-start justify-between gap-3">
+        <div><h3 class="font-display font-bold text-lg">Join requests</h3><p class="text-xs text-sec mt-1">Someone wants to join your ride. Approve only people you recognise.</p></div>
+        <button id="btnCloseJoinRequests" type="button" class="w-9 h-9 rounded-xl surface-subtle font-bold text-sm" aria-label="Close join requests">✕</button>
+      </div>
+      <div id="joinRequestsList" class="space-y-3"><p class="text-sm text-sec">No pending requests.</p></div>
+    </div>
+  </div>
+
+  <div id="joinWaitingModal" class="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm hidden items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="surface-card rounded-t-3xl sm:rounded-3xl max-w-md w-full p-5 space-y-4">
+      <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-2xl surface-subtle flex items-center justify-center text-xl">🛡️</div><div><h3 class="font-display font-bold text-lg">Request sent</h3><p class="text-xs text-sec">Room <strong id="joinWaitingRoomCode"></strong></p></div></div>
+      <p class="text-sm text-sec leading-relaxed">Your request is waiting for the ride owner. Your live location will not be sent by this app until you are approved.</p>
+      <button id="btnCancelJoinRequest" type="button" class="w-full py-3 rounded-xl surface-subtle font-display font-bold text-sm">Cancel request</button>
     </div>
   </div>
 
@@ -756,6 +776,14 @@
     const state = {
       theme: 'light',
       roomCode: roomFromLink || generateRandomRoomCode(),
+      isRoomOwner: !roomFromLink || readStoredOwnerRoomCode() === roomFromLink,
+      joinRequests: [],
+      approvedRiderIds: [],
+      joinRequestId: null,
+      joinRequestPending: false,
+      pendingGpsHighAccuracy: true,
+      isDemoMode: false,
+      lastSeenByRider: {},
       myId: 'rider-' + Math.random().toString(36).substring(2, 9),
       selectedColor: '#ff3b00',
       mqttClient: null,
@@ -778,6 +806,9 @@
       ]
     };
     state.riders[0].id = state.myId;
+    if (!roomFromLink) {
+      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
+    }
 
     function getMe() {
       return state.riders.find(r => r.isMe) || state.riders[0];
@@ -863,9 +894,11 @@
 
     document.getElementById('btnNewRandomRoom').addEventListener('click', () => {
       state.roomCode = generateRandomRoomCode();
+      state.isRoomOwner = true;
+      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
       document.getElementById('landingRoomId').value = state.roomCode;
       document.getElementById('inviteDetectedCard').classList.add('hidden');
-      showToast(`Generated secure ID: ${state.roomCode}`);
+      showToast(`Generated new Room ID: ${state.roomCode}`);
     });
 
     // Manual Room ID entry: type an ID to join an existing room
@@ -1006,8 +1039,33 @@
     map.on('move zoom viewreset resize', drawVectorRoadCanvas);
 
     // =========================================================================
-    // ZERO-COST REALTIME ROOM SYNC (MQTT OVER WEBSOCKETS + BROADCASTCHANNEL)
+    // ROOM ADMISSION HELPERS
     // =========================================================================
+    function readStoredOwnerRoomCode() {
+      try { return sanitizeRoomCode(localStorage.getItem('motogo_v5_owner_room') || ''); }
+      catch (e) { return ''; }
+    }
+    function escapeHtml(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+    function isValidRiderPayload(rider, requireCoordinates = true) {
+      if (!rider || typeof rider !== 'object' || Array.isArray(rider)) return false;
+      if (typeof rider.id !== 'string' || rider.id.length < 3 || rider.id.length > 80) return false;
+      if (typeof rider.name !== 'string' || !rider.name.trim() || rider.name.length > 40) return false;
+      if (typeof rider.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(rider.color)) return false;
+      if (requireCoordinates) {
+        if (!Number.isFinite(rider.lat) || rider.lat < -90 || rider.lat > 90) return false;
+        if (!Number.isFinite(rider.lng) || rider.lng < -180 || rider.lng > 180) return false;
+        if (!Number.isFinite(rider.speedKmh) || rider.speedKmh < 0 || rider.speedKmh > 350) return false;
+      }
+      return true;
+    }
+
+    // =========================================================================
+    // ZERO-COST REALTIME ROOM SYNC (MQTT OVER WEBSOCKETS + BROADCASTCHANNEL)
+    =========================================================================
     let localChannel = null;
     try {
       if ('BroadcastChannel' in window) {
@@ -1019,27 +1077,44 @@
     function connectCloudRoom() {
       const topic = `motogo/v5/room/${state.roomCode}`;
       publishRoomState({ type: 'RIDER_UPDATE' });
-
-      if (typeof mqtt !== 'undefined') {
-        try {
-          if (state.mqttClient) state.mqttClient.end(true);
-          const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-            clientId: 'motogo_' + state.myId + '_' + Math.floor(Math.random() * 999),
-            clean: true,
-            connectTimeout: 5000,
-            reconnectPeriod: 4000
-          });
-          state.mqttClient = client;
-          client.on('connect', () => {
-            state.mqttConnected = true;
-            client.subscribe(topic, { qos: 0 });
+      if (typeof mqtt === 'undefined') { showToast('Realtime connection library did not load'); return; }
+      try {
+        if (state.mqttClient) state.mqttClient.end(true);
+        const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+          clientId: 'motogo_' + state.myId + '_' + Math.floor(Math.random() * 999),
+          clean: true, connectTimeout: 5000, reconnectPeriod: 4000
+        });
+        state.mqttClient = client;
+        client.on('connect', () => {
+          state.mqttConnected = true;
+          client.subscribe(topic, { qos: 0 });
+          if (state.isBroadcasting) {
             publishRoomState({ type: 'RIDER_UPDATE' });
-          });
-          client.on('message', (t, buf) => {
-            try { processSyncMessage(JSON.parse(buf.toString())); } catch (e) {}
-          });
-        } catch (e) {}
+            if (state.isRoomOwner) publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+          }
+          if (state.joinRequestPending) publishJoinRequest();
+        });
+        client.on('message', (t, buf) => {
+          if (t !== topic) return;
+          try { processSyncMessage(JSON.parse(buf.toString())); } catch (e) {}
+        });
+        client.on('close', () => { state.mqttConnected = false; });
+        client.on('error', () => { state.mqttConnected = false; });
+      } catch (e) { state.mqttConnected = false; showToast('Could not connect to the ride room'); }
+    }
+
+    function publishControlPacket(packet) {
+      if (localChannel) { try { localChannel.postMessage(packet); } catch (e) {} }
+      if (state.mqttClient && state.mqttConnected) {
+        try { state.mqttClient.publish(`motogo/v5/room/${state.roomCode}`, JSON.stringify(packet)); } catch (e) {}
       }
+    }
+
+    function publishJoinRequest() {
+      if (!state.joinRequestPending || !state.joinRequestId) return;
+      const me = getMe();
+      publishControlPacket({ roomCode: state.roomCode, type: 'JOIN_REQUEST', requestId: state.joinRequestId,
+        rider: { id: me.id, name: me.name, color: me.color }, sentAt: Date.now() });
     }
 
     function publishRoomState(extra = {}) {
@@ -1068,45 +1143,121 @@
       }
     }
 
-    function processSyncMessage(data) {
-      if (!data || data.roomCode !== state.roomCode) return;
+    function renderJoinRequests() {
+      const list = document.getElementById('joinRequestsList'), modal = document.getElementById('joinRequestsModal');
+      if (!state.joinRequests.length) {
+        list.innerHTML = '<p class="text-sm text-sec">No pending requests.</p>';
+        modal.classList.add('hidden'); modal.classList.remove('flex'); return;
+      }
+      list.innerHTML = state.joinRequests.map(req => `
+        <div class="p-3 rounded-2xl surface-subtle space-y-3">
+          <div class="flex items-center gap-3"><span class="w-3 h-3 rounded-full shrink-0" style="background:${escapeHtml(req.rider.color)}"></span>
+            <div class="min-w-0 flex-1"><p class="font-display font-bold text-sm break-words">${escapeHtml(req.rider.name)}</p>
+            <p class="text-[10px] text-sec">Wants to join room ${escapeHtml(state.roomCode)}</p></div></div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" data-join-action="reject" data-request-id="${escapeHtml(req.requestId)}" class="py-3 rounded-xl surface-subtle font-display font-bold text-xs">Reject</button>
+            <button type="button" data-join-action="accept" data-request-id="${escapeHtml(req.requestId)}" class="py-3 rounded-xl text-white font-display font-bold text-xs" style="background:var(--accent)">Accept rider</button>
+          </div>
+        </div>`).join('');
+      modal.classList.remove('hidden'); modal.classList.add('flex');
+    }
+    function resolveJoinRequest(requestId, accepted) {
+      const request = state.joinRequests.find(item => item.requestId === requestId);
+      if (!request || !state.isRoomOwner || !state.isBroadcasting) return;
+      if (accepted && !state.approvedRiderIds.includes(request.rider.id)) state.approvedRiderIds.push(request.rider.id);
+      publishRoomState({ type: 'JOIN_DECISION', requestId: request.requestId, targetId: request.rider.id, accepted: Boolean(accepted) });
+      if (accepted) publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+      state.joinRequests = state.joinRequests.filter(item => item.requestId !== requestId);
+      renderJoinRequests();
+      showToast(accepted ? `Approved ${request.rider.name}` : `Rejected ${request.rider.name}'s request`);
+    }
+    document.getElementById('joinRequestsList').addEventListener('click', event => {
+      const button = event.target.closest('[data-join-action]');
+      if (button) resolveJoinRequest(button.getAttribute('data-request-id'), button.getAttribute('data-join-action') === 'accept');
+    });
+    document.getElementById('btnCloseJoinRequests').addEventListener('click', () => {
+      const modal = document.getElementById('joinRequestsModal'); modal.classList.add('hidden'); modal.classList.remove('flex');
+    });
+    function closeJoinWaitingModal() {
+      const modal = document.getElementById('joinWaitingModal'); modal.classList.add('hidden'); modal.classList.remove('flex');
+    }
+    function cancelJoinRequest() {
+      state.joinRequestPending = false; state.joinRequestId = null; closeJoinWaitingModal();
+      if (state.mqttClient) { try { state.mqttClient.end(true); } catch (e) {} }
+      state.mqttClient = null; state.mqttConnected = false; showToast('Join request cancelled');
+    }
+    document.getElementById('btnCancelJoinRequest').addEventListener('click', cancelJoinRequest);
 
-      if (data.type === 'RIDER_EXIT' && data.riderId) {
-        state.riders = state.riders.filter(r => r.id !== data.riderId || r.isMe);
-        renderHUD();
+    function processSyncMessage(data) {
+      if (!data || typeof data !== 'object' || Array.isArray(data) ||
+          typeof data.roomCode !== 'string' || data.roomCode !== state.roomCode) return;
+      if (data.type === 'JOIN_REQUEST') {
+        if (!state.isRoomOwner || !state.isBroadcasting || typeof data.requestId !== 'string' ||
+            data.requestId.length > 100 || !isValidRiderPayload(data.rider, false) || data.rider.id === state.myId) return;
+        if (!state.joinRequests.some(req => req.requestId === data.requestId)) {
+          state.joinRequests.push({ requestId: data.requestId, rider: {
+            id: data.rider.id, name: data.rider.name.trim().slice(0, 40), color: data.rider.color
+          }});
+          renderJoinRequests(); showToast(`${data.rider.name} is requesting to join`);
+        }
         return;
       }
-
+      if (data.type === 'JOIN_DECISION') {
+        if (!state.joinRequestPending || data.targetId !== state.myId || data.requestId !== state.joinRequestId ||
+            typeof data.accepted !== 'boolean') return;
+        state.joinRequestPending = false; closeJoinWaitingModal();
+        if (data.accepted) {
+          if (!state.approvedRiderIds.includes(state.myId)) state.approvedRiderIds.push(state.myId);
+          enterLiveRideScreen(false); beginContinuousGpsWatch(state.pendingGpsHighAccuracy);
+          showToast('Join approved. Live GPS is now sharing with the room.');
+        } else {
+          if (state.mqttClient) { try { state.mqttClient.end(true); } catch (e) {} }
+          state.mqttClient = null; state.mqttConnected = false; state.joinRequestId = null;
+          showToast('The room owner rejected your request');
+        }
+        return;
+      }
+      if (data.type === 'ROOM_ROSTER') {
+        if (!Array.isArray(data.riderIds) || data.riderIds.length > 100) return;
+        state.approvedRiderIds = [...new Set(data.riderIds.filter(id => typeof id === 'string' && id.length >= 3 && id.length <= 80))];
+      }
+      if (data.type === 'RIDER_EXIT' && typeof data.riderId === 'string') {
+        if (!state.approvedRiderIds.includes(data.riderId)) return;
+        if (markerRefs[data.riderId]) { riderLayerGroup.removeLayer(markerRefs[data.riderId]); delete markerRefs[data.riderId]; }
+        state.riders = state.riders.filter(r => r.id !== data.riderId || r.isMe);
+        delete state.lastSeenByRider[data.riderId];
+        state.approvedRiderIds = state.approvedRiderIds.filter(id => id !== data.riderId);
+        renderHUD(); return;
+      }
       if (data.rider && data.rider.id !== state.myId) {
         const inc = data.rider;
-        const found = state.riders.find(r => r.id === inc.id);
-        if (!found) {
-          state.riders.push({ ...inc, isMe: false });
-          showToast(`${inc.name} joined Room ${state.roomCode}`);
-          fitAllPackRiders();
-        } else {
-          Object.assign(found, inc, { isMe: false });
-        }
+        if (!isValidRiderPayload(inc, true) || !state.approvedRiderIds.includes(inc.id)) return;
+        state.lastSeenByRider[inc.id] = Date.now();
+        const safeRider = { id: inc.id, name: inc.name.trim().slice(0, 40), color: inc.color,
+          lat: inc.lat, lng: inc.lng, speedKmh: inc.speedKmh, isMe: false };
+        const found = state.riders.find(r => r.id === safeRider.id);
+        if (!found) { state.riders.push(safeRider); showToast(`${safeRider.name} joined Room ${state.roomCode}`); fitAllPackRiders(); }
+        else Object.assign(found, safeRider, { isMe: false });
       }
-
       if (data.type === 'STOP_SIGNAL' && data.activeSignal) {
-        state.activeSignal = data.activeSignal;
-        playAlertChime();
-        showToast(`🛑 ${data.activeSignal.senderName}: ${data.activeSignal.message}`);
-      } else if (data.type === 'SIGNAL_ACK' && data.signalId && data.ackRiderName) {
-        if (state.activeSignal && state.activeSignal.id === data.signalId) {
-          if (!state.activeSignal.acceptedBy.includes(data.ackRiderName)) {
-            state.activeSignal.acceptedBy.push(data.ackRiderName);
-            showToast(`✓ ${data.ackRiderName} accepted your stop signal`);
-          }
+        const sig = data.activeSignal;
+        if (typeof sig.id !== 'string' || typeof sig.senderId !== 'string' || !state.approvedRiderIds.includes(sig.senderId) ||
+            typeof sig.message !== 'string' || sig.message.length > 180 || typeof sig.senderName !== 'string' || sig.senderName.length > 40 ||
+            !Number.isFinite(sig.lat) || sig.lat < -90 || sig.lat > 90 || !Number.isFinite(sig.lng) || sig.lng < -180 || sig.lng > 180 ||
+            !Array.isArray(sig.acceptedBy)) return;
+        state.activeSignal = { id: sig.id.slice(0, 100), senderId: sig.senderId, senderName: sig.senderName.slice(0, 40),
+          message: sig.message.slice(0, 180), lat: sig.lat, lng: sig.lng,
+          acceptedBy: sig.acceptedBy.filter(name => typeof name === 'string').map(name => name.slice(0, 40)).slice(0, 100) };
+        playAlertChime(); showToast(`Stop signal from ${state.activeSignal.senderName}`);
+      } else if (data.type === 'SIGNAL_ACK' && typeof data.signalId === 'string' &&
+                 typeof data.ackRiderName === 'string' && state.approvedRiderIds.includes(data.ackRiderId)) {
+        if (state.activeSignal && state.activeSignal.id === data.signalId && !state.activeSignal.acceptedBy.includes(data.ackRiderName)) {
+          state.activeSignal.acceptedBy.push(data.ackRiderName.slice(0, 40));
+          showToast(`✓ ${data.ackRiderName} accepted your stop signal`);
         }
-      } else if (data.type === 'CLEAR_SIGNAL') {
-        state.activeSignal = null;
-      }
-
+      } else if (data.type === 'CLEAR_SIGNAL') state.activeSignal = null;
       renderHUD();
     }
-
     setInterval(() => {
       if (!state.isBroadcasting) return;
       state.riders.forEach(r => {
@@ -1121,6 +1272,16 @@
         }
       });
       publishRoomState({ type: 'RIDER_UPDATE' });
+      if (state.isRoomOwner) publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+      const now = Date.now();
+      state.riders = state.riders.filter(r => {
+        if (r.isMe || r.isSimFriend) return true;
+        if (state.lastSeenByRider[r.id] && now - state.lastSeenByRider[r.id] > 20000) {
+          if (markerRefs[r.id]) { riderLayerGroup.removeLayer(markerRefs[r.id]); delete markerRefs[r.id]; }
+          delete state.lastSeenByRider[r.id]; return false;
+        }
+        return true;
+      });
       renderHUD();
     }, 3000);
 
@@ -1196,7 +1357,7 @@
             <div class="rider-radar-pulse" style="background:${r.color}44; border: 2px solid ${r.color};"></div>
             <div style="background:#09090b; color:#ffffff; border: 2px solid #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.35);" class="px-2.5 py-0.5 rounded-full mb-1 flex items-center gap-1.5 whitespace-nowrap">
               <span style="width:8px; height:8px; border-radius:9999px; background:${r.color}; border:1px solid #ffffff; display:inline-block;"></span>
-              <span style="color:#ffffff; font-size:11px; font-weight:800;">${r.name}</span>
+              <span style="color:#ffffff; font-size:11px; font-weight:800;">${escapeHtml(r.name)}</span>
               <span style="background:#ffffff; color:#09090b; font-size:10px; font-weight:800; padding:1px 6px; border-radius:9999px;" class="font-mono-tech">${distTag}</span>
             </div>
             <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xl border-2 border-white" style="background:${r.color}; color:#ffffff;">
@@ -1218,7 +1379,7 @@
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5 font-extrabold text-sm" style="color:#09090b;">
                 <span style="width:10px; height:10px; border-radius:9999px; background:${r.color}; display:inline-block;"></span>
-                <span>${r.name}</span>
+                <span>${escapeHtml(r.name)}</span>
               </div>
               <span class="font-mono-tech text-[11px] font-bold px-1.5 py-0.5 rounded bg-zinc-100" style="color:#3f3f46;">${r.speedKmh || 0} km/h</span>
             </div>
@@ -1413,12 +1574,14 @@
       );
     }
 
-    function enterLiveRideScreen() {
+    function enterLiveRideScreen(demoMode = false) {
       const nameVal = document.getElementById('inputCallsign').value.trim() || 'Rider 1';
       const me = getMe();
       me.name = nameVal;
       me.color = state.selectedColor;
-      state.isBroadcasting = true;
+      state.isDemoMode = Boolean(demoMode);
+      state.isBroadcasting = !state.isDemoMode;
+      if (!state.isDemoMode && !state.approvedRiderIds.includes(state.myId)) state.approvedRiderIds.push(state.myId);
 
       try {
         localStorage.setItem('motogo_v5_name', nameVal);
@@ -1445,9 +1608,12 @@
         map.setView([me.lat, me.lng], 16);
       }, 50);
 
-      connectCloudRoom();
+      document.getElementById('demoModeBanner').classList.toggle('hidden', !state.isDemoMode);
+      if (!state.isDemoMode) connectCloudRoom();
       renderHUD();
-      showToast(`📡 GPS Locked! Broadcasting in ${state.roomCode}`);
+      showToast(state.isDemoMode
+        ? 'Demo mode: simulated position only; no live GPS is being shared'
+        : (state.isRoomOwner ? `Room created. You are the ride owner for ${state.roomCode}` : `Connected to approved room ${state.roomCode}`));
     }
 
     function showGpsTroubleshooterModal(reasonText) {
@@ -1463,6 +1629,22 @@
 
     // CRITICAL FOR iOS SAFARI: `navigator.geolocation.getCurrentPosition` MUST be invoked
     // synchronously on the very first line of the click handler to preserve the iOS user-gesture token!
+    function requestRoomEntry(highAccuracy) {
+      const me = getMe();
+      me.name = document.getElementById('inputCallsign').value.trim() || 'Rider 1';
+      me.color = state.selectedColor;
+      state.pendingGpsHighAccuracy = highAccuracy;
+      state.joinRequestId = 'join-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+      state.joinRequestPending = true;
+      document.getElementById('joinWaitingRoomCode').textContent = state.roomCode;
+      const modal = document.getElementById('joinWaitingModal'); modal.classList.remove('hidden'); modal.classList.add('flex');
+      connectCloudRoom(); showToast('Requesting approval from the ride owner');
+    }
+    function continueAfterGpsLock(highAccuracy) {
+      if (state.isRoomOwner) { enterLiveRideScreen(false); beginContinuousGpsWatch(highAccuracy); }
+      else requestRoomEntry(highAccuracy);
+    }
+
     function forceLocationPromptAndLaunch() {
       const typedRoom = sanitizeRoomCode(document.getElementById('landingRoomId').value);
       if (typedRoom.length < 3) {
@@ -1472,9 +1654,11 @@
       }
       if (typedRoom !== state.roomCode) {
         // Switching rooms: drop riders/signals from the previous room
-        state.riders = [getMe()];
-        state.activeSignal = null;
+        state.riders = [getMe()]; state.activeSignal = null;
+        state.approvedRiderIds = []; state.lastSeenByRider = {};
       }
+      const wasOwnerOfCurrentRoom = state.isRoomOwner && typedRoom === state.roomCode;
+      state.isRoomOwner = wasOwnerOfCurrentRoom || typedRoom === readStoredOwnerRoomCode();
       state.roomCode = typedRoom;
       document.getElementById('landingRoomId').value = typedRoom;
 
@@ -1490,8 +1674,7 @@
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           applyGpsCoordinates(pos);
-          enterLiveRideScreen();
-          beginContinuousGpsWatch(true);
+          continueAfterGpsLock(true);
         },
         (err) => {
           // If High Accuracy timed out or position unavailable (common indoors on iOS), immediately retry with standard accuracy (Wi-Fi/Cell)
@@ -1500,8 +1683,7 @@
             navigator.geolocation.getCurrentPosition(
               (pos2) => {
                 applyGpsCoordinates(pos2);
-                enterLiveRideScreen();
-                beginContinuousGpsWatch(false);
+                continueAfterGpsLock(false);
               },
               (err2) => {
                 const msg = err2.code === 1
@@ -1570,8 +1752,8 @@
       m.classList.remove('flex');
     });
     document.getElementById('btnContinueDemoFallback').addEventListener('click', () => {
-      enterLiveRideScreen();
-      showToast('Entered Demo Mode (drag your pin on map to test)');
+      enterLiveRideScreen(true);
+      showToast('Demo mode: simulated position only; no live GPS is being shared');
     });
 
     // 2. Exit Room Button
@@ -1590,7 +1772,11 @@
 
       state.riders = [getMe()];
       state.activeSignal = null;
-      state.roomCode = generateRandomRoomCode();
+      state.isDemoMode = false; state.joinRequestPending = false; state.joinRequestId = null;
+      state.joinRequests = []; state.approvedRiderIds = [state.myId]; state.lastSeenByRider = {};
+      state.roomCode = generateRandomRoomCode(); state.isRoomOwner = true;
+      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
+      document.getElementById('demoModeBanner').classList.add('hidden');
       document.getElementById('landingRoomId').value = state.roomCode;
       document.getElementById('inviteDetectedCard').classList.add('hidden');
       try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
