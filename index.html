@@ -1825,7 +1825,7 @@
       try {
         localStorage.setItem('motogo_v5_name', nameVal);
         localStorage.setItem('motogo_v5_color', state.selectedColor);
-        window.history.replaceState(null, '', `?room=${encodeURIComponent(state.roomCode)}`);
+        window.history.replaceState(null, '', `?room=${encodeURIComponent(state.roomCode)}&mode=${encodeURIComponent(state.roomAccessMode)}`);
       } catch (e) {}
 
       // Reset Launch button UI
