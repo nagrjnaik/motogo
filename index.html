@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#ff3b00" />
+  <meta name="description" content="MotoGo keeps your motorcycle ride group connected with live rider locations, distance markers, and stop signals." />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="./icons/motogo.svg" />
+  <link rel="apple-touch-icon" href="./icons/motogo-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>motoGo — Live Pack Telemetry</title>
@@ -274,7 +279,7 @@
           <span>About</span>
         </button>
 
-        <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-full surface-subtle flex items-center justify-center transition hover:opacity-80 active:scale-95" title="GitHub: nagrjnaik/motogo">
+        <a href="https://github.com/nagrjnaik" target="_blank" rel="noopener noreferrer" class="w-9 h-9 rounded-full surface-subtle flex items-center justify-center transition hover:opacity-80 active:scale-95" title="GitHub: nagrjnaik/motogo">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
           </svg>
@@ -296,10 +301,10 @@
           <span id="landingGpsStatusText">Live Pack Telemetry</span>
         </div>
         <h1 class="font-display text-3xl sm:text-4xl font-bold tracking-tight leading-[1.08]">
-          Never lose your pack on the road.
+          Keep your riding group in sight.
         </h1>
         <p id="landingSubheadline" class="text-xs sm:text-sm text-sec font-medium">
-          Real-time GPS radar, rider-to-rider distance tethers, and instant stop signals for Android & iOS.
+          Live rider locations, distance markers, and stop signals for group rides.
         </p>
       </div>
 
@@ -361,6 +366,24 @@
           </div>
         </div>
 
+        <div id="roomAccessControl" class="space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <label class="text-[11px] font-mono-tech font-bold uppercase tracking-wider text-sec">Room access</label>
+            <span class="text-[10px] text-mut">OWNER SETTINGS</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="p-3 rounded-2xl surface-subtle flex items-start gap-2 cursor-pointer">
+              <input id="roomAccessOpen" type="radio" name="roomAccessMode" value="open" class="mt-1 accent-orange-600" />
+              <span><strong class="block text-xs font-display">Open room</strong><span class="block text-[10px] text-sec leading-relaxed mt-1">Anyone with the Room ID can join instantly.</span></span>
+            </label>
+            <label class="p-3 rounded-2xl surface-subtle flex items-start gap-2 cursor-pointer">
+              <input id="roomAccessClosed" type="radio" name="roomAccessMode" value="closed" class="mt-1 accent-orange-600" checked />
+              <span><strong class="block text-xs font-display">Closed room</strong><span class="block text-[10px] text-sec leading-relaxed mt-1">You must approve each rider.</span></span>
+            </label>
+          </div>
+          <p id="roomAccessDescription" class="text-[10px] text-mut leading-relaxed">Closed by default. Review each join request before sharing your pack.</p>
+        </div>
+
         <!-- Launch Ride Button (Forces Hardware Location Sharing before entering!) -->
         <button id="btnLaunchRide" type="button" class="w-full py-4 px-5 rounded-2xl font-display font-bold text-base tracking-tight text-white shadow-lg flex items-center justify-between transition active:scale-[0.99]" style="background: var(--accent);">
           <span id="btnLaunchRideLabel">Start Broadcasting GPS</span>
@@ -371,6 +394,13 @@
           <span>📍 Location access is required to join ride</span>
           <button id="btnOpenGpsHelpLanding" type="button" class="underline font-bold" style="color: var(--accent);">iOS GPS Help?</button>
         </div>
+        <div class="pt-1 border-t" style="border-color:var(--border-strong)">
+          <div class="flex items-center justify-between gap-3 pt-3">
+            <div class="min-w-0"><p class="text-xs font-display font-bold">Install MotoGo</p><p class="text-[10px] text-mut leading-relaxed">Add it to your home screen for quick access. Background GPS still depends on your phone and browser.</p></div>
+            <button id="btnInstallApp" type="button" class="hidden shrink-0 px-3 py-2 rounded-xl text-white text-xs font-display font-bold" style="background:var(--accent)">Install</button>
+          </div>
+          <p class="text-[10px] text-mut mt-2">Chrome: use the Install option in the browser menu. iPhone: Safari → Share → Add to Home Screen.</p>
+        </div>
       </div>
     </div>
 
@@ -379,10 +409,6 @@
       <button id="btnFooterAbout" type="button" class="hover:underline flex items-center gap-1 font-semibold">
         <span>Developed by Nagraj Naik</span>
       </button>
-      <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="hover:underline flex items-center gap-1 font-bold">
-        <span>GitHub</span>
-        <span>↗</span>
-      </a>
     </div>
   </section>
 
@@ -656,7 +682,7 @@
         <p class="text-xs font-medium leading-relaxed">
           Developed by <strong>Nagraj Naik</strong>, fueled by filter coffee and the collective trauma of spending two hours hunting for lost friends who took the wrong highway exit.
         </p>
-        <a href="https://github.com/nagrjnaik/motogo" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-white dark:text-zinc-950 font-display font-bold text-xs flex items-center justify-center gap-2 shadow transition">
+        <a href="https://github.com/nagrjnaik" target="_blank" rel="noopener noreferrer" class="w-full py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-white dark:text-zinc-950 font-display font-bold text-xs flex items-center justify-center gap-2 shadow transition">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
           </svg>
@@ -824,6 +850,7 @@
       theme: 'light',
       roomCode: roomFromLink || generateRandomRoomCode(),
       isRoomOwner: !roomFromLink || readStoredOwnerRoomCode() === roomFromLink,
+      roomAccessMode: 'closed',
       joinRequests: [],
       approvedRiderIds: [],
       joinRequestId: null,
@@ -854,6 +881,12 @@
       ]
     };
     state.riders[0].id = state.myId;
+    if (state.isRoomOwner) {
+      try {
+        const savedAccess = localStorage.getItem('motogo_v5_room_access_' + state.roomCode);
+        if (savedAccess === 'open' || savedAccess === 'closed') state.roomAccessMode = savedAccess;
+      } catch (e) {}
+    }
     if (!roomFromLink) {
       try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
     }
@@ -873,6 +906,17 @@
     // =========================================================================
     // RENDER LANDING PAGE CONTROLS
     // =========================================================================
+    function renderRoomAccessControls() {
+      const control = document.getElementById('roomAccessControl');
+      if (!control) return;
+      control.classList.toggle('hidden', !state.isRoomOwner);
+      document.getElementById('roomAccessOpen').checked = state.roomAccessMode === 'open';
+      document.getElementById('roomAccessClosed').checked = state.roomAccessMode !== 'open';
+      document.getElementById('roomAccessDescription').textContent = state.roomAccessMode === 'open'
+        ? 'Open room: riders with the ID are accepted automatically. Share the ID only with people you trust.'
+        : 'Closed by default. Review each join request before sharing your pack.';
+    }
+
     function renderLandingColors() {
       const previewIcon = document.getElementById('previewDefaultBikeIcon');
       if (previewIcon) previewIcon.style.color = state.selectedColor;
@@ -943,11 +987,28 @@
     document.getElementById('btnNewRandomRoom').addEventListener('click', () => {
       state.roomCode = generateRandomRoomCode();
       state.isRoomOwner = true;
-      try { localStorage.setItem('motogo_v5_owner_room', state.roomCode); } catch (e) {}
+      state.roomAccessMode = 'closed';
+      try {
+        localStorage.setItem('motogo_v5_owner_room', state.roomCode);
+        localStorage.setItem('motogo_v5_room_access_' + state.roomCode, state.roomAccessMode);
+      } catch (e) {}
       document.getElementById('landingRoomId').value = state.roomCode;
       document.getElementById('inviteDetectedCard').classList.add('hidden');
+      renderRoomAccessControls();
       showToast(`Generated new Room ID: ${state.roomCode}`);
     });
+
+    document.querySelectorAll('input[name="roomAccessMode"]').forEach(input => {
+      input.addEventListener('change', () => {
+        if (!state.isRoomOwner) return;
+        const selected = document.querySelector('input[name="roomAccessMode"]:checked');
+        state.roomAccessMode = selected && selected.value === 'open' ? 'open' : 'closed';
+        try { localStorage.setItem('motogo_v5_room_access_' + state.roomCode, state.roomAccessMode); } catch (e) {}
+        renderRoomAccessControls();
+        showToast(state.roomAccessMode === 'open' ? 'Open room enabled' : 'Closed room enabled');
+      });
+    });
+    renderRoomAccessControls();
 
     // Manual Room ID entry: type an ID to join an existing room
     document.getElementById('landingRoomId').addEventListener('input', (e) => {
@@ -1247,6 +1308,13 @@
       if (data.type === 'JOIN_REQUEST') {
         if (!state.isRoomOwner || !state.isBroadcasting || typeof data.requestId !== 'string' ||
             data.requestId.length > 100 || !isValidRiderPayload(data.rider, false) || data.rider.id === state.myId) return;
+        if (state.roomAccessMode === 'open') {
+          if (!state.approvedRiderIds.includes(data.rider.id)) state.approvedRiderIds.push(data.rider.id);
+          publishRoomState({ type: 'JOIN_DECISION', requestId: data.requestId, targetId: data.rider.id, accepted: true });
+          publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
+          showToast(`${data.rider.name.trim().slice(0, 40)} joined the open room`);
+          return;
+        }
         if (!state.joinRequests.some(req => req.requestId === data.requestId)) {
           state.joinRequests.push({ requestId: data.requestId, rider: {
             id: data.rider.id, name: data.rider.name.trim().slice(0, 40), color: data.rider.color
@@ -1329,15 +1397,8 @@
       });
       publishRoomState({ type: 'RIDER_UPDATE' });
       if (state.isRoomOwner) publishRoomState({ type: 'ROOM_ROSTER', riderIds: state.approvedRiderIds });
-      const now = Date.now();
-      state.riders = state.riders.filter(r => {
-        if (r.isMe || r.isSimFriend) return true;
-        if (state.lastSeenByRider[r.id] && now - state.lastSeenByRider[r.id] > 20000) {
-          if (markerRefs[r.id]) { riderLayerGroup.removeLayer(markerRefs[r.id]); delete markerRefs[r.id]; }
-          delete state.lastSeenByRider[r.id]; return false;
-        }
-        return true;
-      });
+      // Keep each rider's last known position visible after GPS updates stop.
+      // Stale riders remain until they explicitly send RIDER_EXIT or the room is reset.
       renderHUD();
     }, 3000);
 
@@ -1739,6 +1800,13 @@
       const wasOwnerOfCurrentRoom = state.isRoomOwner && typedRoom === state.roomCode;
       state.isRoomOwner = wasOwnerOfCurrentRoom || typedRoom === readStoredOwnerRoomCode();
       state.roomCode = typedRoom;
+      if (state.isRoomOwner) {
+        try {
+          const savedAccess = localStorage.getItem('motogo_v5_room_access_' + state.roomCode);
+          if (savedAccess === 'open' || savedAccess === 'closed') state.roomAccessMode = savedAccess;
+        } catch (e) {}
+      }
+      renderRoomAccessControls();
       document.getElementById('landingRoomId').value = typedRoom;
 
       if (!('geolocation' in navigator)) {
@@ -2110,6 +2178,40 @@
         drawVectorRoadCanvas();
       }, ms));
     });
+    // Progressive Web App installation support. This improves installability,
+    // but does not grant the browser unrestricted background location access.
+    let deferredInstallPrompt = null;
+    const installButton = document.getElementById('btnInstallApp');
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      if (installButton) installButton.classList.remove('hidden');
+    });
+    if (installButton) {
+      installButton.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) {
+          showToast('Use your browser menu to install MotoGo or add it to your home screen.');
+          return;
+        }
+        deferredInstallPrompt.prompt();
+        try {
+          const choice = await deferredInstallPrompt.userChoice;
+          if (choice && choice.outcome === 'accepted') showToast('MotoGo installation accepted');
+        } catch (e) {}
+        deferredInstallPrompt = null;
+        installButton.classList.add('hidden');
+      });
+    }
+    window.addEventListener('appinstalled', () => {
+      if (installButton) installButton.classList.add('hidden');
+      showToast('MotoGo installed');
+    });
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js', { scope: './' }).catch(() => {});
+      });
+    }
+
   </script>
 </body>
 </html>
